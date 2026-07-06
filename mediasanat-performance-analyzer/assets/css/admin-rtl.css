@@ -9,7 +9,14 @@
     --ms-warning: #f0b429;
     --ms-success: #17b85b;
 }
-.ms-app-wrap { margin: 20px 20px 0 0; font-family: Tahoma, "IRANSans", sans-serif; color: var(--ms-text-main); }
+
+/* اصلاح بخش بدنه برای ارث‌بری فونت سایت به جای فونت ثابت */
+.ms-app-wrap { 
+    margin: 20px 20px 0 0; 
+    font-family: inherit; 
+    color: var(--ms-text-main); 
+}
+
 .ms-glass-dashboard { background: var(--ms-bg-gradient); border-radius: 16px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); min-height: 80vh; }
 .app-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--ms-glass-border); padding-bottom: 20px; margin-bottom: 30px; }
 .app-header h1 { font-size: 26px; font-weight: bold; margin: 0; }
@@ -36,6 +43,7 @@
 .report-item.warning { border-color: var(--ms-warning); }
 .report-item.success { border-color: var(--ms-success); }
 .report-item p { margin: 8px 0 0 0; line-height: 1.6; }
+
 /* Modal Styles */
 .mediasanat-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(16, 42, 67, 0.6); backdrop-filter: blur(5px); z-index: 99999; display: flex; align-items: center; justify-content: center; }
 .mediasanat-modal-content { background: #fff; border-radius: 12px; width: 500px; box-shadow: 0 25px 50px rgba(0,0,0,0.25); overflow: hidden; }
@@ -93,13 +101,6 @@
     text-decoration: underline;
 }
 
-/* اصلاح بخش بدنه برای ارث‌بری فونت سایت به جای فونت ثابت */
-.ms-app-wrap { 
-    margin: 20px 20px 0 0; 
-    font-family: inherit; /* این خط باعث می‌شود فونت قالب یا پیشخوان وردپرس روی این ابزار اعمال شود */
-    color: var(--ms-text-main); 
-}
-
 /* استایل توضیحات زیر اعداد داشبورد */
 .stat-desc {
     font-size: 12px;
@@ -125,3 +126,67 @@
 .ms-guide-box p { margin-top:0; line-height: 1.6; }
 .ms-guide-box ul { margin-top: 10px; padding-right: 20px; list-style-type: disc;}
 .ms-guide-box li { margin-bottom: 8px; line-height: 1.6;}
+
+/* کارت امتیاز سرعت (نسخه جدید) */
+.score-card {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+.score-circle {
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.score-inner {
+    width: 100px; height: 100px;
+    background: #fff; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.score-num { font-size: 38px; font-weight: bold; line-height: 1; color: var(--ms-text-main); }
+.score-max { font-size: 12px; color: var(--ms-text-muted); margin-top: 4px; }
+.score-info h2 { margin: 0 0 10px 0; font-size: 22px; }
+.score-info p { margin: 0; line-height: 1.7; color: var(--ms-text-muted); }
+
+/* واحد کوچک کنار اعداد */
+.stat-value small { font-size: 14px; font-weight: normal; color: var(--ms-text-muted); }
+
+/* بنر خطا */
+.error-banner {
+    display: flex; gap: 25px; padding: 30px; margin-bottom: 30px;
+    background: #fff5f5; border: 1px solid #fed7d7;
+}
+.error-icon { font-size: 50px; flex-shrink: 0; }
+.error-content h2 { margin: 0 0 10px 0; color: var(--ms-danger); }
+.error-msg { color: #9b2c2c; font-weight: bold; margin: 0 0 15px 0; line-height: 1.7; }
+.error-fix { background: rgba(255,255,255,0.7); border-right: 4px solid var(--ms-warning); padding: 12px 16px; border-radius: 8px; }
+.error-fix strong { color: var(--ms-warning); display: block; margin-bottom: 6px; }
+.error-fix p { margin: 0; line-height: 1.7; }
+
+/* خلاصه گزارش (Badge) */
+.report-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.summary-badge { padding: 5px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; color: #fff; }
+.summary-badge.danger { background: var(--ms-danger); }
+.summary-badge.warning { background: var(--ms-warning); }
+
+/* آیتم گزارش با برچسب اولویت */
+.report-item-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.report-item-header h4 { margin: 0; font-size: 16px; }
+.report-badge { padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+.report-badge.danger { background: rgba(225,45,57,0.15); color: var(--ms-danger); }
+.report-badge.warning { background: rgba(240,180,41,0.2); color: #b7791f; }
+.report-badge.success { background: rgba(23,184,91,0.15); color: var(--ms-success); }
+
+/* رسپانسیو */
+@media (max-width: 960px) {
+    .app-grid { grid-template-columns: 1fr; }
+    .data-grid { grid-template-columns: 1fr 1fr; }
+    .score-card, .error-banner { flex-direction: column; text-align: center; }
+}
+@media (max-width: 600px) {
+    .data-grid { grid-template-columns: 1fr; }
+}

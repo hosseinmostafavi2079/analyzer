@@ -164,4 +164,55 @@ jQuery(document).ready(function($) {
             }
         });
     });
+
+    // پاک کردن لیست لاگ ارتباطات شبکه
+    $('.ms-clear-logs-btn').on('click', function(e) {
+        e.preventDefault();
+        if(!confirm('آیا لیست ارتباطات پاک شود؟ (دامنه‌های مسدودشده حذف نمی‌شوند، فقط تاریخچه پاک می‌شود)')) return;
+
+        let $btn = $(this);
+        $btn.text('در حال پاکسازی...').prop('disabled', true);
+
+        $.ajax({
+            url: msPaConfig.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'ms_clear_network_logs',
+                security: msPaConfig.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert(response.data);
+                    location.reload();
+                } else {
+                    alert('خطا: ' + response.data);
+                    $btn.text('🔄 پاک کردن لیست و شروع نظارت مجدد').prop('disabled', false);
+                }
+            },
+            error: function() {
+                alert('خطای ارتباط با سرور.');
+                $btn.text('🔄 پاک کردن لیست و شروع نظارت مجدد').prop('disabled', false);
+            }
+        });
+    });
+
+    // تست مجدد سرعت
+    $('.ms-retest-btn').on('click', function(e) {
+        e.preventDefault();
+        let $btn = $(this);
+        $btn.text('⏳ در حال تست مجدد سرعت... (چند ثانیه صبر کنید)').prop('disabled', true);
+        $.ajax({
+            url: msPaConfig.ajax_url,
+            type: 'POST',
+            data: { action: 'ms_retest_speed', security: msPaConfig.nonce },
+            success: function(response) {
+                location.reload();
+            },
+            error: function() {
+                alert('خطای ارتباط با سرور.');
+                $btn.text('🔄 تست مجدد سرعت').prop('disabled', false);
+            }
+        });
+    });
+
 });
