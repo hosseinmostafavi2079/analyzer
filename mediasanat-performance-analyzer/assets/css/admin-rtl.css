@@ -47,3 +47,81 @@
 .btn-cancel, .btn-danger { padding: 10px 20px; border-radius: 8px; cursor: pointer; border: none; font-family: inherit; font-weight: bold; }
 .btn-cancel { background: #e2e8f0; color: #475569; }
 .btn-danger { background: var(--ms-danger); color: white; }
+
+/* Tab Logic Setup */
+.tab-pane {
+    display: none;
+    animation: fadeIn 0.4s ease-in-out;
+}
+.tab-pane.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Data Tables */
+.ms-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background: rgba(255,255,255,0.4);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.ms-table th, .ms-table td {
+    padding: 12px 15px;
+    text-align: right;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.ms-table th {
+    background: rgba(0,0,0,0.03);
+    font-weight: bold;
+    color: var(--ms-text-muted);
+}
+.ms-table tr:last-child td {
+    border-bottom: none;
+}
+.ms-table a {
+    color: var(--ms-primary);
+    text-decoration: none;
+    font-weight: bold;
+}
+.ms-table a:hover {
+    text-decoration: underline;
+}
+
+/* اصلاح بخش بدنه برای ارث‌بری فونت سایت به جای فونت ثابت */
+.ms-app-wrap { 
+    margin: 20px 20px 0 0; 
+    font-family: inherit; /* این خط باعث می‌شود فونت قالب یا پیشخوان وردپرس روی این ابزار اعمال شود */
+    color: var(--ms-text-main); 
+}
+
+/* استایل توضیحات زیر اعداد داشبورد */
+.stat-desc {
+    font-size: 12px;
+    color: var(--ms-text-muted);
+    margin-top: 5px;
+    line-height: 1.5;
+}
+
+/* باکس‌های راهنما و آموزشی برای کاربران مبتدی */
+.ms-guide-box {
+    background: rgba(49, 130, 206, 0.1);
+    border-right: 4px solid var(--ms-primary);
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.ms-guide-box strong {
+    color: var(--ms-primary);
+    display: block;
+    margin-bottom: 10px;
+    font-size: 15px;
+}
+.ms-guide-box p { margin-top:0; line-height: 1.6; }
+.ms-guide-box ul { margin-top: 10px; padding-right: 20px; list-style-type: disc;}
+.ms-guide-box li { margin-bottom: 8px; line-height: 1.6;}
