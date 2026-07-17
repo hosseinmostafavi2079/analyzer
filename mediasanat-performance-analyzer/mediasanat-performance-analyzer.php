@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Mostech Resilience Monitor
  * Plugin URI:  https://mostech.ir/
- * Description: تحلیل محلی سرعت و وابستگی‌های خارجی وردپرس با حالت تاب‌آوری ویژه اختلال اینترنت بین‌الملل.
- * Version:     1.2.0
+ * Description: پایش و مدیریت امن وابستگی‌های خارجی وردپرس؛ بدون قابلیت کش، Minify یا Telemetry.
+ * Version:     1.3.0
  * Author:      hoseinmos
  * Author URI:  https://mostech.ir/
  * Text Domain: mostech-resilience-monitor
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit; // جلوگیری از دسترسی مستقیم
 
-define( 'MEDIASANAT_PA_VERSION', '1.2.0' );
+define( 'MEDIASANAT_PA_VERSION', '1.3.0' );
 define( 'MEDIASANAT_PA_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MEDIASANAT_PA_URL', plugin_dir_url( __FILE__ ) );
 define( 'MEDIASANAT_PA_MIN_PHP', '7.4' );
@@ -50,6 +50,7 @@ if ( mediasanat_pa_check_compatibility() ) {
         if ( get_option( 'ms_pa_version' ) !== MEDIASANAT_PA_VERSION ) {
             delete_transient( 'ms_homepage_stats' );
             delete_transient( 'ms_pa_heavy_images' );
+            delete_transient( 'ms_ext_req_log' );
             update_option( 'ms_pa_version', MEDIASANAT_PA_VERSION, false );
         }
         $dashboard = new \Mediasanat\PA\Admin\Dashboard();
@@ -62,4 +63,6 @@ register_activation_hook( __FILE__, function() {
     add_option( 'ms_blocked_domains', [], '', false );
     add_option( 'ms_resilience_allowlist', [], '', false );
     add_option( 'ms_pa_version', MEDIASANAT_PA_VERSION, '', false );
+    add_option( 'ms_pa_operation_mode', 'monitor', '', false );
+    add_option( 'ms_pa_domain_rules', [], '', false );
 } );

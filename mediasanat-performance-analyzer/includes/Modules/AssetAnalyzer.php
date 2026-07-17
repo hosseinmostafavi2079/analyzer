@@ -28,7 +28,7 @@ class AssetAnalyzer {
         if ( is_wp_error( $response ) ) {
             return [
                 'status'  => 'error',
-                'message' => 'سیستم نتوانست به سایت شما متصل شود. علت: ' . $response->get_error_message(),
+                'message' => 'سیستم نتوانست به سایت شما متصل شود. کد خطا: request_failed',
                 'reason'  => $this->guess_error_reason( $response->get_error_message() ),
             ];
         }
@@ -74,6 +74,7 @@ class AssetAnalyzer {
         }
 
         $total_load_time = max( 0.01, round( (float) $response_time, 3 ) );
+        $ttfb = $total_load_time;
         $total_size_mb   = round( ( $html_size + $total_assets_size ) / ( 1024 * 1024 ), 2 );
         $score = $this->calculate_speed_score( $ttfb, $total_load_time, $total_size_mb, count( $assets ), count( $external_assets ) );
 
@@ -249,7 +250,8 @@ class AssetAnalyzer {
             }
             $items[ $host ]['count']++;
             $items[ $host ]['types'][ $type ] = $type;
-            if ( count( $items[ $host ]['samples'] ) < 2 ) $items[ $host ]['samples'][] = $url;
+            $sample = $this->safe_origin( $url );
+            if ( $sample && count( $items[ $host ]['samples'] ) < 2 && ! in_array( $sample, $items[ $host ]['samples'], true ) ) $items[ $host ]['samples'][] = $sample;
         }
         foreach ( $references as $url ) {
             if ( isset( $runtime_urls[ $url ] ) ) continue;
@@ -261,13 +263,22 @@ class AssetAnalyzer {
             $items[ $host ]['types']['code_reference'] = 'اشاره URL در کد';
             if ( ! in_array( $url, $items[ $host ]['samples'], true ) ) {
                 $items[ $host ]['count']++;
-                if ( count( $items[ $host ]['samples'] ) < 2 ) $items[ $host ]['samples'][] = $url;
+                $sample = $this->safe_origin( $url );
+                if ( $sample && count( $items[ $host ]['samples'] ) < 2 && ! in_array( $sample, $items[ $host ]['samples'], true ) ) $items[ $host ]['samples'][] = $sample;
             }
         }
         foreach ( $items as &$item ) $item['types'] = array_values( $item['types'] );
         unset( $item );
         uasort( $items, function( $a, $b ) { return $b['count'] <=> $a['count']; } );
         return array_values( $items );
+    }
+
+    private function safe_origin( $url ) {
+        $parts = wp_parse_url( $url );
+        if ( empty( $parts['host'] ) ) return '';
+        $scheme = isset( $parts['scheme'] ) && in_array( strtolower( $parts['scheme'] ), [ 'http', 'https' ], true ) ? strtolower( $parts['scheme'] ) : 'https';
+        $port = isset( $parts['port'] ) ? ':' . (int) $parts['port'] : '';
+        return $scheme . '://' . strtolower( $parts['host'] ) . $port;
     }
 
     private function calculate_speed_score( $ttfb, $total_time, $size_mb, $asset_count, $external_count ) {
