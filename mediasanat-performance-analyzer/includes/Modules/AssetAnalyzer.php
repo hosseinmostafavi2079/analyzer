@@ -28,7 +28,7 @@ class AssetAnalyzer {
         if ( is_wp_error( $response ) ) {
             return [
                 'status'  => 'error',
-                'message' => 'سیستم نتوانست به سایت شما متصل شود. کد خطا: request_failed',
+                'message' => 'سیستم نتوانست برای اسکن به صفحه اصلی سایت متصل شود.',
                 'reason'  => $this->guess_error_reason( $response->get_error_message() ),
             ];
         }
@@ -53,6 +53,16 @@ class AssetAnalyzer {
      * تحلیل HTML دریافت‌شده از loopback سرور یا fallback مرورگر مدیر.
      */
     public function analyze_html( $body, $response_time, $code = 200, $source = 'server', $load_time = null ) {
+        if ( ! is_string( $body ) || '' === trim( $body ) || ! is_numeric( $response_time ) || (float) $response_time <= 0 || ( null !== $load_time && ( ! is_numeric( $load_time ) || (float) $load_time <= 0 ) ) ) {
+            return [
+                'status'          => 'incomplete',
+                'message'         => 'داده‌های زمان‌سنجی یا HTML برای محاسبه امتیاز کامل نیست.',
+                'reason'          => 'اسکن را دوباره اجرا کنید؛ مقدار ناموجود به صفر تبدیل نمی‌شود.',
+                'score'           => null,
+                'score_available' => false,
+                'data_quality'    => 'incomplete',
+            ];
+        }
         $analysis_started = microtime( true );
         $html_size = strlen( $body );
 
@@ -79,7 +89,12 @@ class AssetAnalyzer {
         $total_size_mb   = round( ( $html_size + $total_assets_size ) / ( 1024 * 1024 ), 2 );
         $analysis_time = max( 0.001, round( microtime( true ) - $analysis_started, 3 ) );
         $total_analysis_time = round( $load_time + $analysis_time, 3 );
-        $score = $this->calculate_speed_score( $response_time, $load_time, $total_size_mb, count( $assets ), count( $external_assets ) );
+        $runtime_external_domains = [];
+        foreach ( $external_assets as $external_url ) {
+            $external_host = strtolower( (string) wp_parse_url( $external_url, PHP_URL_HOST ) );
+            if ( $external_host ) $runtime_external_domains[ $external_host ] = true;
+        }
+        $score_result = $this->calculate_speed_score( $response_time, $load_time, $total_size_mb, count( $assets ), count( $runtime_external_domains ) );
 
         return [
             'status'        => 'success',
@@ -96,7 +111,9 @@ class AssetAnalyzer {
             'external_count'=> count( $external_assets ),
             'external_assets' => $this->describe_external_assets( $external_assets, $this->extract_url_references( $body ) ),
             'code'          => $code,
-            'score'         => $score,
+            'score'         => $score_result['score'],
+            'score_breakdown' => $score_result['breakdown'],
+            'score_formula_version' => 2,
             'score_available' => true,
             'data_quality'  => 'complete',
             'scan_source'   => $source,
@@ -291,19 +308,29 @@ class AssetAnalyzer {
         return $scheme . '://' . strtolower( $parts['host'] ) . $port;
     }
 
-    private function calculate_speed_score( $ttfb, $total_time, $size_mb, $asset_count, $external_count ) {
-        $score = 100;
-        if ( $ttfb > 0.8 ) $score -= 15;
-        if ( $ttfb > 1.5 ) $score -= 15;
-        if ( $ttfb > 3 )   $score -= 20;
-        if ( $total_time > 2 )  $score -= 15;
-        if ( $total_time > 4 )  $score -= 15;
-        if ( $size_mb > 2 ) $score -= 10;
-        if ( $size_mb > 4 ) $score -= 10;
-        if ( $asset_count > 30 ) $score -= 5;
-        if ( $asset_count > 60 ) $score -= 10;
-        if ( $external_count > 0 ) $score -= min( 25, 5 + ( $external_count * 2 ) );
-        return max( 0, min( 100, $score ) );
+    public function calculate_speed_score( $response_time, $load_time, $size_mb, $reference_count, $external_domain_count ) {
+        $response_time = max( 0, (float) $response_time );
+        $load_time = max( $response_time, (float) $load_time );
+        $transfer_time = max( 0, $load_time - $response_time );
+        $size_mb = max( 0, (float) $size_mb );
+        $reference_count = max( 0, (int) $reference_count );
+        $external_domain_count = max( 0, (int) $external_domain_count );
+
+        $response_penalty = $response_time <= .5 ? 0 : ( $response_time <= 1 ? 4 : ( $response_time <= 2 ? 10 : ( $response_time <= 3.5 ? 20 : ( $response_time <= 6 ? 35 : 55 ) ) ) );
+        $transfer_penalty = $transfer_time <= .75 ? 0 : ( $transfer_time <= 2 ? 4 : ( $transfer_time <= 4 ? 9 : ( $transfer_time <= 8 ? 16 : 25 ) ) );
+        $size_penalty = $size_mb <= 1.5 ? 0 : ( $size_mb <= 3 ? 4 : ( $size_mb <= 6 ? 9 : ( $size_mb <= 12 ? 16 : 25 ) ) );
+        $reference_penalty = $reference_count <= 40 ? 0 : ( $reference_count <= 80 ? 2 : ( $reference_count <= 150 ? 5 : ( $reference_count <= 250 ? 9 : 12 ) ) );
+        $domain_penalty = $external_domain_count <= 3 ? 0 : ( $external_domain_count <= 8 ? 2 : ( $external_domain_count <= 15 ? 5 : ( $external_domain_count <= 30 ? 9 : 12 ) ) );
+
+        $breakdown = [
+            [ 'key' => 'response', 'label' => 'زمان پاسخ اندازه‌گیری‌شده', 'value' => round( $response_time, 3 ) . ' ثانیه', 'deduction' => $response_penalty ],
+            [ 'key' => 'transfer', 'label' => 'زمان تکمیل دریافت پس از پاسخ اولیه', 'value' => round( $transfer_time, 3 ) . ' ثانیه', 'deduction' => $transfer_penalty ],
+            [ 'key' => 'local_size', 'label' => 'حجم محلی قابل اندازه‌گیری', 'value' => round( $size_mb, 2 ) . ' مگابایت', 'deduction' => $size_penalty ],
+            [ 'key' => 'references', 'label' => 'ارجاع‌های HTML و CSS', 'value' => $reference_count . ' مورد', 'deduction' => $reference_penalty ],
+            [ 'key' => 'external_domains', 'label' => 'دامنه‌های خارجی اجرایی', 'value' => $external_domain_count . ' دامنه', 'deduction' => $domain_penalty ],
+        ];
+        $deduction = $response_penalty + $transfer_penalty + $size_penalty + $reference_penalty + $domain_penalty;
+        return [ 'score' => max( 0, min( 100, 100 - $deduction ) ), 'deduction' => $deduction, 'breakdown' => $breakdown ];
     }
 
     public function get_heavy_images( $limit = 2000 ) {

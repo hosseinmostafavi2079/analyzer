@@ -4,7 +4,7 @@ Tags: performance, resilience, external dependencies, iran, monitoring
 Requires at least: 5.5
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.6.0
 License: GPLv2 or later
 
 Local WordPress dependency monitoring and management designed for unstable international connectivity.
@@ -48,9 +48,21 @@ No telemetry is sent. Logs contain only the domain, aggregate count, status code
 
 To stop enforcement immediately, add this to `wp-config.php`:
 
-`define( 'MOSTECH_RESILIENCE_EMERGENCY_OFF', true );`
+`define( 'DEPGUARD_EMERGENCY_OFF', true );`
+
+The legacy `MOSTECH_RESILIENCE_EMERGENCY_OFF` constant remains supported for backward compatibility.
 
 == Changelog ==
+
+= 1.6.0 =
+* Separated sensitive dependency counts from unknown domains; unknown no longer implies critical or dangerous.
+* Added centralized Persian mapping for request status, policy decision and operating mode labels, with raw values confined to technical details.
+* Added a high-risk Blocklist review panel for payment, SMS, login, captcha, license, WordPress update, unknown and official WordPress domains.
+* Added `DEPGUARD_EMERGENCY_OFF` while retaining the legacy emergency constant for compatibility.
+* Replaced cumulative score thresholds with mutually exclusive penalties and stopped charging full response time twice.
+* Reduced the weight of HTML/CSS references and score external runtime domains instead of every external URL.
+* Added score calculation breakdown and incomplete-data handling without coercing missing values to zero.
+* Invalidated cached scan results through the 1.6.0 version migration.
 
 = 1.5.0 =
 * Renamed the displayed product to DepGuard – WordPress Dependency Monitor while retaining legacy folder, file, class, constant and option identifiers for safe upgrades.

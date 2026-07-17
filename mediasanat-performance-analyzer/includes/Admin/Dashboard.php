@@ -6,6 +6,7 @@ use Mediasanat\PA\Modules\SolutionsEngine;
 use Mediasanat\PA\Modules\AssetAnalyzer;
 use Mediasanat\PA\Modules\NetworkMonitor;
 use Mediasanat\PA\Modules\PolicyManager;
+use Mediasanat\PA\Modules\StatusMapper;
 use Mediasanat\PA\Core\SafetyEngine;
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -62,11 +63,21 @@ class Dashboard {
         if ( ! $heavy_scan_ready ) $heavy_images = [];
 
         $network_logs = $network->get_logs();
+        foreach ( $network_logs as &$network_log ) {
+            $network_log['status_label'] = StatusMapper::request_status( $network_log['status'] ?? '' );
+            $network_log['decision_label'] = StatusMapper::decision( $network_log['decision'] ?? 'observe' );
+        }
+        unset( $network_log );
         $policy_state = $policy->get_mode_state();
+        $policy_state['mode_label'] = StatusMapper::mode( $policy_state['mode'] );
         $domain_rules = $policy->get_rules();
         $categories = $policy->get_categories();
 
         $homepage_stats = get_transient( 'ms_homepage_stats' );
+        if ( is_array( $homepage_stats ) && 'success' === ( $homepage_stats['status'] ?? '' ) && 2 !== (int) ( $homepage_stats['score_formula_version'] ?? 0 ) ) {
+            delete_transient( 'ms_homepage_stats' );
+            $homepage_stats = false;
+        }
         if ( false === $homepage_stats ) {
             $homepage_stats = [
                 'status'  => 'not_scanned',
@@ -95,25 +106,17 @@ class Dashboard {
             $item['rule_list'] = $rule['list'] ?? '';
             $item['rule_label'] = ! $rule ? 'بدون قانون' : ( 'allow' === $rule['list'] ? 'فهرست مجاز (Allowlist)' : 'فهرست مسدود (Blocklist)' );
             $item['decision'] = $evaluation['decision'];
-            if ( 'allow' === $evaluation['decision'] ) {
-                $item['decision_label'] = 'آزاد — به‌دلیل Allowlist';
-            } elseif ( 'would_block' === $evaluation['decision'] ) {
-                $item['decision_label'] = 'در شبیه‌سازی قابل قطع';
-            } elseif ( 'block' === $evaluation['decision'] ) {
-                $item['decision_label'] = 'طبق سیاست واقعاً مسدود';
-            } elseif ( $rule && 'block' === $rule['list'] ) {
-                $item['decision_label'] = 'تحت پایش — Blocklist فعلاً قطع نمی‌شود';
-            } else {
-                $item['decision_label'] = 'تحت پایش — آزاد';
-            }
+            $item['decision_label'] = StatusMapper::decision( $evaluation['decision'], $item['rule_list'] );
             $type_labels = [ 'اسکریپت' => 'JavaScript', 'استایل' => 'CSS', 'اشاره URL در کد' => 'اشاره در HTML', 'فایل Frontend' => 'CSS یا JavaScript', 'تماس سروری' => 'تماس سروری' ];
             $item['observation_types'] = array_values( array_unique( array_map( function( $type ) use ( $type_labels ) { return $type_labels[ $type ] ?? $type; }, (array) ( $item['types'] ?? [] ) ) ) );
             if ( empty( $item['last_seen'] ) ) $item['last_seen'] = (int) ( $homepage_stats['scanned_at'] ?? 0 );
             $item['response_status'] = $item['response_status'] ?? 'ثبت HTML';
+            $item['response_status_label'] = StatusMapper::request_status( $item['response_status'] );
             $item['response_time'] = isset( $item['response_time'] ) ? (float) $item['response_time'] : null;
             $item['is_error'] = ! empty( $item['is_error'] );
             $item['is_slow'] = null !== $item['response_time'] && $item['response_time'] >= 1.5;
-            $item['is_critical'] = in_array( $category, [ 'payment', 'sms', 'login', 'captcha', 'license', 'update', 'unknown' ], true );
+            $item['is_critical'] = $policy->is_sensitive_category( $category );
+            $item['is_unknown'] = 'unknown' === $category;
             $item['is_fresh'] = ! empty( $item['last_seen'] ) && (int) $item['last_seen'] >= time() - HOUR_IN_SECONDS;
         }
         unset( $item );
@@ -123,7 +126,22 @@ class Dashboard {
             'errors'   => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_error'] ); } ) ),
             'slow'     => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_slow'] ); } ) ),
             'critical' => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_critical'] ); } ) ),
+            'unknown'  => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_unknown'] ); } ) ),
         ];
+
+        $risky_block_rules = [];
+        foreach ( $domain_rules as $domain => $rule ) {
+            if ( 'block' !== ( $rule['list'] ?? '' ) ) continue;
+            $category = $rule['category'] ?? $policy->get_manual_category( $domain );
+            if ( ! $category ) $category = $policy->auto_category( $domain );
+            $is_official_wordpress = (bool) preg_match( '/(?:^|\.)wordpress\.org$/i', $domain );
+            if ( ! $is_official_wordpress && ! $policy->is_risky_block_category( $category ) ) continue;
+            $category_data = $policy->get_category_data( $category );
+            $reason = $is_official_wordpress
+                ? 'این دامنه متعلق به زیرساخت رسمی WordPress است و قطع آن می‌تواند بروزرسانی یا دریافت اطلاعات افزونه‌ها را مختل کند.'
+                : ( 'unknown' === $category ? 'کاربرد این دامنه هنوز مشخص نیست؛ ناشناخته بودن به معنی خطرناک بودن نیست، اما مسدودسازی آن بدون بررسی ممکن است بخشی از سایت را مختل کند.' : ( $category_data['warning'] ?: $category_data['impact'] ) );
+            $risky_block_rules[] = [ 'domain' => $domain, 'category' => $category, 'category_label' => $category_data['label'], 'reason' => $reason ];
+        }
 
         $reports = $engine->generate_report( $server_health, $homepage_stats );
         require MEDIASANAT_PA_PATH . 'includes/Admin/Views/dashboard-view.php';
@@ -197,8 +215,11 @@ class Dashboard {
         SafetyEngine::verify_ajax_request( 'ms_pa_safe_action' );
         $html = isset( $_POST['html'] ) ? wp_unslash( $_POST['html'] ) : '';
         if ( ! is_string( $html ) || strlen( $html ) < 100 || strlen( $html ) > 5 * 1024 * 1024 ) wp_send_json_error( 'حجم HTML دریافت‌شده برای تحلیل معتبر نیست.' );
-        $response_time = isset( $_POST['response_time'] ) ? (float) sanitize_text_field( wp_unslash( $_POST['response_time'] ) ) : 0.01;
-        $load_time = isset( $_POST['load_time'] ) ? (float) sanitize_text_field( wp_unslash( $_POST['load_time'] ) ) : $response_time;
+        $raw_response_time = isset( $_POST['response_time'] ) ? sanitize_text_field( wp_unslash( $_POST['response_time'] ) ) : '';
+        $raw_load_time = isset( $_POST['load_time'] ) ? sanitize_text_field( wp_unslash( $_POST['load_time'] ) ) : '';
+        if ( ! is_numeric( $raw_response_time ) || ! is_numeric( $raw_load_time ) || (float) $raw_response_time <= 0 || (float) $raw_load_time <= 0 ) wp_send_json_error( 'داده زمان‌سنجی مرورگر ناقص است؛ اسکن سروری جایگزین اجرا شود.' );
+        $response_time = (float) $raw_response_time;
+        $load_time = (float) $raw_load_time;
         $response_time = max( 0.01, min( 60, $response_time ) );
         $load_time = max( $response_time, min( 60, $load_time ) );
         $stats = ( new AssetAnalyzer() )->analyze_html( $html, $response_time, 200, 'browser', $load_time );

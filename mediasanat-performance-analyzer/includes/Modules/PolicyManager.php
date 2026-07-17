@@ -215,8 +215,18 @@ class PolicyManager {
         return $categories[ $category ] ?? $categories['unknown'];
     }
 
+    public function is_sensitive_category( $category ) {
+        return in_array( $category, [ 'payment', 'sms', 'login', 'captcha', 'license', 'update' ], true );
+    }
+
+    public function is_risky_block_category( $category ) {
+        return $this->is_sensitive_category( $category ) || 'unknown' === $category;
+    }
+
     public function is_emergency_off() {
-        return defined( 'MOSTECH_RESILIENCE_EMERGENCY_OFF' ) && true === MOSTECH_RESILIENCE_EMERGENCY_OFF;
+        $current = defined( 'DEPGUARD_EMERGENCY_OFF' ) && true === DEPGUARD_EMERGENCY_OFF;
+        $legacy = defined( 'MOSTECH_RESILIENCE_EMERGENCY_OFF' ) && true === MOSTECH_RESILIENCE_EMERGENCY_OFF;
+        return $current || $legacy;
     }
 
     private function get_internal_domains() {

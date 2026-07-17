@@ -3,7 +3,7 @@
  * Plugin Name: DepGuard – WordPress Dependency Monitor
  * Plugin URI:  https://mostech.ir/
  * Description: پایش و مدیریت وابستگی‌های خارجی وردپرس
- * Version:     1.5.0
+ * Version:     1.6.0
  * Author:      hoseinmos
  * Author URI:  https://mostech.ir/
  * Text Domain: depguard
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit; // جلوگیری از دسترسی مستقیم
 
-define( 'MEDIASANAT_PA_VERSION', '1.5.0' );
+define( 'MEDIASANAT_PA_VERSION', '1.6.0' );
 define( 'MEDIASANAT_PA_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MEDIASANAT_PA_URL', plugin_dir_url( __FILE__ ) );
 define( 'MEDIASANAT_PA_MIN_PHP', '7.4' );
