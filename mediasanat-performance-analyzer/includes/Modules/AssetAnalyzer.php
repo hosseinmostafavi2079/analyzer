@@ -11,14 +11,18 @@ class AssetAnalyzer {
     public function analyze_homepage() {
         // مرحله ۱: اندازه‌گیری TTFB و دریافت HTML
         $start_time = microtime( true );
-        $response = wp_remote_get( home_url( '/?ms_nocache=' . time() ), [
-            'timeout'     => 25,
+        $scan_token = strtolower( wp_generate_password( 24, false, false ) );
+        set_transient( 'ms_pa_scan_' . $scan_token, 1, MINUTE_IN_SECONDS );
+        $scan_url = add_query_arg( [ 'ms_pa_scan' => time(), 'ms_pa_token' => $scan_token ], home_url( '/' ) );
+        $response = wp_remote_get( $scan_url, [
+            'timeout'     => 15,
             'redirection' => 5,
-            'sslverify'   => false,
-            'user-agent'  => 'Mozilla/5.0 (compatible; MediasanatBot/1.0)',
+            'sslverify'   => true,
+            'user-agent'  => 'Mostech-Resilience-Monitor/' . MEDIASANAT_PA_VERSION,
             'headers'     => [ 'Cache-Control' => 'no-cache' ],
         ] );
-        $ttfb = round( microtime( true ) - $start_time, 2 );
+        $ttfb = max( 0.01, round( microtime( true ) - $start_time, 3 ) );
+        delete_transient( 'ms_pa_scan_' . $scan_token );
 
         // === مدیریت خطا: اگر ارتباط برقرار نشد ===
         if ( is_wp_error( $response ) ) {
@@ -42,31 +46,36 @@ class AssetAnalyzer {
             ];
         }
 
+        return $this->analyze_html( $body, $ttfb, $code, 'server' );
+    }
+
+    /**
+     * تحلیل HTML دریافت‌شده از loopback سرور یا fallback مرورگر مدیر.
+     */
+    public function analyze_html( $body, $response_time, $code = 200, $source = 'server' ) {
         $html_size = strlen( $body );
 
         // مرحله ۲: استخراج فایل‌های استاتیک
-        $assets = $this->extract_assets( $body );
+        $assets = $this->expand_local_css_assets( $this->extract_assets( $body ) );
+        $external_assets = array_values( array_filter( $assets, [ $this, 'is_external_url' ] ) );
+        $internal_assets = array_values( array_diff( $assets, $external_assets ) );
 
-        // مرحله ۳: اندازه‌گیری حجم و زمان منابع
-        $assets_start = microtime( true );
+        // مرحله ۳: محاسبه حجم فایل‌های داخلی مستقیماً از دیسک؛ بدون هیچ تماس خارجی.
         $total_assets_size = 0;
         $checked = 0;
-        $max_check = 15;
+        $max_check = 100;
 
-        foreach ( $assets as $asset_url ) {
+        // اصل مهم محصول: اسکن هرگز برای اندازه‌گیری به سرور خارجی متصل نمی‌شود.
+        foreach ( $internal_assets as $asset_url ) {
             if ( $checked >= $max_check ) break;
-            $asset_res = wp_remote_head( $asset_url, [ 'timeout' => 8, 'sslverify' => false ] );
-            if ( ! is_wp_error( $asset_res ) ) {
-                $len = wp_remote_retrieve_header( $asset_res, 'content-length' );
-                if ( $len ) $total_assets_size += (int) $len;
-            }
+            $local_path = $this->url_to_local_path( $asset_url );
+            if ( $local_path && is_file( $local_path ) ) $total_assets_size += (int) filesize( $local_path );
             $checked++;
         }
-        $assets_time = round( microtime( true ) - $assets_start, 2 );
 
-        $total_load_time = round( $ttfb + $assets_time, 2 );
+        $total_load_time = max( 0.01, round( (float) $response_time, 3 ) );
         $total_size_mb   = round( ( $html_size + $total_assets_size ) / ( 1024 * 1024 ), 2 );
-        $score = $this->calculate_speed_score( $ttfb, $total_load_time, $total_size_mb, count( $assets ) );
+        $score = $this->calculate_speed_score( $ttfb, $total_load_time, $total_size_mb, count( $assets ), count( $external_assets ) );
 
         return [
             'status'        => 'success',
@@ -75,8 +84,12 @@ class AssetAnalyzer {
             'size'          => $total_size_mb,
             'html_size'     => round( $html_size / 1024, 1 ),
             'assets_count'  => count( $assets ),
+            'internal_count'=> count( $internal_assets ),
+            'external_count'=> count( $external_assets ),
+            'external_assets' => $this->describe_external_assets( $external_assets, $this->extract_url_references( $body ) ),
             'code'          => $code,
             'score'         => $score,
+            'scan_source'   => $source,
         ];
     }
 
@@ -114,24 +127,150 @@ class AssetAnalyzer {
     private function extract_assets( $html ) {
         $assets = [];
         $home = home_url();
-        preg_match_all( '/<link[^>]+href=["\']([^"\']+\.css[^"\']*)["\']/i', $html, $css );
-        preg_match_all( '/<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']/i', $html, $js );
-        preg_match_all( '/<img[^>]+src=["\']([^"\']+)["\']/i', $html, $img );
-        $all = array_merge( $css[1] ?? [], $js[1] ?? [], $img[1] ?? [] );
+        $links = $this->extract_relevant_links( $html );
+        preg_match_all( '/<script[^>]+src=["\']([^"\']+)["\']/i', $html, $js );
+        preg_match_all( '/<(?:img|source)[^>]+(?:src|srcset|data-src)=["\']([^"\']+)["\']/i', $html, $img );
+        preg_match_all( '/<(?:iframe|source|video|audio|embed|object)[^>]+(?:src|data)=["\']([^"\']+)["\']/i', $html, $media );
+        preg_match_all( '/<form[^>]+action=["\']([^"\']+)["\']/i', $html, $forms );
+        preg_match_all( '/url\(["\']?([^\)"\']+)["\']?\)/i', $html, $inline_urls );
+        $all = array_merge( $links, $js[1] ?? [], $img[1] ?? [], $media[1] ?? [], $forms[1] ?? [], $inline_urls[1] ?? [] );
 
-        foreach ( $all as $url ) {
-            if ( strpos( $url, 'data:' ) === 0 ) continue; // نادیده گرفتن تصاویر base64
-            if ( strpos( $url, '//' ) === 0 ) {
-                $url = 'https:' . $url;
-            } elseif ( strpos( $url, 'http' ) !== 0 ) {
-                $url = rtrim( $home, '/' ) . '/' . ltrim( $url, '/' );
+        foreach ( $all as $value ) {
+            // تمام کاندیداهای srcset بررسی می‌شوند، نه فقط اولین تصویر.
+            $candidates = strpos( $value, ',' ) !== false ? explode( ',', $value ) : [ $value ];
+            foreach ( $candidates as $url ) {
+                $url = trim( preg_replace( '/\s+\d+(?:\.\d+)?[wx]$/i', '', trim( $url ) ) );
+                if ( ! $url || strpos( $url, 'data:' ) === 0 || strpos( $url, '#' ) === 0 ) continue;
+                if ( strpos( $url, '//' ) === 0 ) {
+                    $url = 'https:' . $url;
+                } elseif ( strpos( $url, 'http' ) !== 0 ) {
+                    $url = rtrim( $home, '/' ) . '/' . ltrim( $url, '/' );
+                }
+                $assets[ $url ] = $url;
             }
-            $assets[ $url ] = $url;
         }
         return array_values( $assets );
     }
 
-    private function calculate_speed_score( $ttfb, $total_time, $size_mb, $asset_count ) {
+    private function extract_relevant_links( $html ) {
+        $urls = [];
+        $allowed_rels = [ 'stylesheet', 'preload', 'modulepreload', 'prefetch', 'preconnect', 'dns-prefetch', 'icon', 'manifest' ];
+        preg_match_all( '/<link\b[^>]*>/i', $html, $tags );
+        foreach ( $tags[0] ?? [] as $tag ) {
+            if ( ! preg_match( '/href=["\']([^"\']+)["\']/i', $tag, $href ) || ! preg_match( '/rel=["\']([^"\']+)["\']/i', $tag, $rel ) ) continue;
+            $rels = preg_split( '/\s+/', strtolower( trim( $rel[1] ) ) );
+            if ( array_intersect( $allowed_rels, $rels ) ) $urls[] = $href[1];
+        }
+        return $urls;
+    }
+
+    private function expand_local_css_assets( $assets ) {
+        $expanded = array_fill_keys( $assets, true );
+        $checked  = 0;
+        foreach ( $assets as $css_url ) {
+            $path = strtolower( (string) wp_parse_url( $css_url, PHP_URL_PATH ) );
+            if ( ! preg_match( '/\.css$/', $path ) || $this->is_external_url( $css_url ) || $checked >= 50 ) continue;
+            $local_path = $this->url_to_local_path( $css_url );
+            if ( ! $local_path || ! is_readable( $local_path ) || filesize( $local_path ) > 1024 * 1024 ) continue;
+            $contents = file_get_contents( $local_path );
+            if ( false === $contents ) continue;
+            preg_match_all( '/(?:url\(|@import\s+)["\']?([^\)"\';\s]+)["\']?/i', $contents, $matches );
+            foreach ( $matches[1] ?? [] as $reference ) {
+                if ( 0 === strpos( $reference, 'data:' ) || 0 === strpos( $reference, '#' ) ) continue;
+                $resolved = $this->resolve_css_url( $css_url, $reference );
+                if ( $resolved ) $expanded[ $resolved ] = true;
+            }
+            $checked++;
+        }
+        return array_keys( $expanded );
+    }
+
+    private function resolve_css_url( $css_url, $reference ) {
+        if ( 0 === strpos( $reference, '//' ) ) return 'https:' . $reference;
+        if ( preg_match( '#^https?://#i', $reference ) ) return $reference;
+        $parts = wp_parse_url( $css_url );
+        if ( empty( $parts['host'] ) ) return false;
+        $path = 0 === strpos( $reference, '/' ) ? $reference : dirname( $parts['path'] ) . '/' . $reference;
+        $segments = [];
+        foreach ( explode( '/', $path ) as $segment ) {
+            if ( '' === $segment || '.' === $segment ) continue;
+            if ( '..' === $segment ) array_pop( $segments ); else $segments[] = $segment;
+        }
+        $port = isset( $parts['port'] ) ? ':' . $parts['port'] : '';
+        return ( $parts['scheme'] ?? 'https' ) . '://' . $parts['host'] . $port . '/' . implode( '/', $segments );
+    }
+
+    private function url_to_local_path( $url ) {
+        $home_parts = wp_parse_url( home_url( '/' ) );
+        $url_parts  = wp_parse_url( $url );
+        if ( empty( $url_parts['host'] ) || empty( $home_parts['host'] ) || strtolower( $url_parts['host'] ) !== strtolower( $home_parts['host'] ) ) return false;
+        $home_path = isset( $home_parts['path'] ) ? rtrim( $home_parts['path'], '/' ) : '';
+        $url_path  = isset( $url_parts['path'] ) ? rawurldecode( $url_parts['path'] ) : '';
+        if ( $home_path && strpos( $url_path, $home_path ) === 0 ) $url_path = substr( $url_path, strlen( $home_path ) );
+        $candidate = wp_normalize_path( ABSPATH . ltrim( $url_path, '/' ) );
+        $root      = trailingslashit( wp_normalize_path( ABSPATH ) );
+        return strpos( $candidate, $root ) === 0 ? $candidate : false;
+    }
+
+    public function is_external_url( $url ) {
+        $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+        $home = strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+        return $host && $home && $host !== $home;
+    }
+
+    private function extract_url_references( $html ) {
+        $html = str_replace( '\\/', '/', html_entity_decode( $html, ENT_QUOTES, 'UTF-8' ) );
+        preg_match_all( '#(?:https?:)?//[a-z0-9][a-z0-9.\-]*(?::\d+)?(?:/[^\s<>"\'\\)]*)?#iu', $html, $matches );
+        $references = [];
+        foreach ( $matches[0] ?? [] as $url ) {
+            $url = rtrim( $url, '.,;:]}' );
+            if ( 0 === strpos( $url, '//' ) ) $url = 'https:' . $url;
+            if ( $this->is_external_url( $url ) ) $references[ $url ] = $url;
+        }
+        return array_values( $references );
+    }
+
+    private function describe_external_assets( $urls, $references = [] ) {
+        $items = [];
+        $runtime_urls = array_fill_keys( $urls, true );
+        foreach ( $urls as $url ) {
+            $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+            if ( ! $host ) continue;
+            $path = strtolower( (string) wp_parse_url( $url, PHP_URL_PATH ) );
+            $type = 'سایر';
+            if ( preg_match( '/\.css$/', $path ) ) $type = 'استایل';
+            elseif ( preg_match( '/\.js$/', $path ) ) $type = 'اسکریپت';
+            elseif ( preg_match( '/\.(woff2?|ttf|otf)$/', $path ) ) $type = 'فونت';
+            elseif ( preg_match( '/\.(jpe?g|png|gif|webp|svg|avif)$/', $path ) ) $type = 'تصویر';
+            elseif ( preg_match( '/\.(mp4|webm|mp3|ogg)$/', $path ) ) $type = 'رسانه';
+
+            if ( ! isset( $items[ $host ] ) ) {
+                $items[ $host ] = [ 'domain' => $host, 'count' => 0, 'types' => [], 'samples' => [] ];
+            }
+            $items[ $host ]['count']++;
+            $items[ $host ]['types'][ $type ] = $type;
+            if ( count( $items[ $host ]['samples'] ) < 2 ) $items[ $host ]['samples'][] = $url;
+        }
+        foreach ( $references as $url ) {
+            if ( isset( $runtime_urls[ $url ] ) ) continue;
+            $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+            if ( ! $host ) continue;
+            if ( ! isset( $items[ $host ] ) ) {
+                $items[ $host ] = [ 'domain' => $host, 'count' => 0, 'types' => [], 'samples' => [] ];
+            }
+            $items[ $host ]['types']['code_reference'] = 'اشاره URL در کد';
+            if ( ! in_array( $url, $items[ $host ]['samples'], true ) ) {
+                $items[ $host ]['count']++;
+                if ( count( $items[ $host ]['samples'] ) < 2 ) $items[ $host ]['samples'][] = $url;
+            }
+        }
+        foreach ( $items as &$item ) $item['types'] = array_values( $item['types'] );
+        unset( $item );
+        uasort( $items, function( $a, $b ) { return $b['count'] <=> $a['count']; } );
+        return array_values( $items );
+    }
+
+    private function calculate_speed_score( $ttfb, $total_time, $size_mb, $asset_count, $external_count ) {
         $score = 100;
         if ( $ttfb > 0.8 ) $score -= 15;
         if ( $ttfb > 1.5 ) $score -= 15;
@@ -142,31 +281,45 @@ class AssetAnalyzer {
         if ( $size_mb > 4 ) $score -= 10;
         if ( $asset_count > 30 ) $score -= 5;
         if ( $asset_count > 60 ) $score -= 10;
+        if ( $external_count > 0 ) $score -= min( 25, 5 + ( $external_count * 2 ) );
         return max( 0, min( 100, $score ) );
     }
 
-    public function get_heavy_images( $limit = 10 ) {
-        $args = [
-            'post_type'      => 'attachment',
-            'post_mime_type' => 'image',
-            'posts_per_page' => 150,
-            'post_status'    => 'inherit',
-            'fields'         => 'ids',
+    public function get_heavy_images( $limit = 100 ) {
+        $uploads = wp_upload_dir();
+        $locations = [
+            [ 'path' => get_stylesheet_directory(), 'url' => get_stylesheet_directory_uri(), 'source' => 'قالب فعال' ],
         ];
-        $image_ids = get_posts( $args );
+        if ( get_template_directory() !== get_stylesheet_directory() ) {
+            $locations[] = [ 'path' => get_template_directory(), 'url' => get_template_directory_uri(), 'source' => 'قالب والد' ];
+        }
+        $locations[] = [ 'path' => $uploads['basedir'], 'url' => $uploads['baseurl'], 'source' => 'uploads' ];
         $heavy_images = [];
-        foreach ( $image_ids as $img_id ) {
-            $file_path = get_attached_file( $img_id );
-            if ( $file_path && file_exists( $file_path ) ) {
-                $size = filesize( $file_path );
-                if ( $size > 200 * 1024 ) {
+        $seen = [];
+        foreach ( $locations as $location ) {
+            if ( ! is_dir( $location['path'] ) ) continue;
+            $scanned = 0;
+            try {
+                $iterator = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $location['path'], \FilesystemIterator::SKIP_DOTS ) );
+                foreach ( $iterator as $file ) {
+                    if ( $scanned++ >= 10000 ) break;
+                    if ( ! $file->isFile() || ! preg_match( '/\.(?:jpe?g|png|gif|webp|avif|svg)$/i', $file->getFilename() ) ) continue;
+                    $path = wp_normalize_path( $file->getPathname() );
+                    if ( isset( $seen[ $path ] ) ) continue;
+                    $seen[ $path ] = true;
+                    $size = $file->getSize();
+                    if ( $size <= 200 * 1024 ) continue;
+                    $relative = ltrim( substr( $path, strlen( wp_normalize_path( $location['path'] ) ) ), '/' );
                     $heavy_images[] = [
-                        'title' => get_the_title( $img_id ),
-                        'url'   => wp_get_attachment_url( $img_id ),
-                        'size'  => round( $size / (1024 * 1024), 2 ) . ' MB',
-                        'bytes' => $size
+                        'title'  => $file->getFilename(),
+                        'url'    => trailingslashit( $location['url'] ) . str_replace( '%2F', '/', rawurlencode( $relative ) ),
+                        'size'   => size_format( $size, 2 ),
+                        'bytes'  => $size,
+                        'source' => $location['source'],
                     ];
                 }
+            } catch ( \UnexpectedValueException $exception ) {
+                continue;
             }
         }
         usort( $heavy_images, function($a, $b) { return $b['bytes'] <=> $a['bytes']; } );

@@ -1,387 +1,110 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) exit;
+$scan_ok        = isset( $homepage_stats['status'] ) && 'success' === $homepage_stats['status'];
+$score          = $scan_ok ? (int) ( $homepage_stats['score'] ?? 0 ) : 0;
+$external_count = (int) ( $homepage_stats['external_domain_count'] ?? ( $homepage_stats['external_count'] ?? 0 ) );
+$risky_external_count = (int) ( $homepage_stats['risky_external_count'] ?? ( $homepage_stats['external_count'] ?? 0 ) );
+$issue_count    = count( array_filter( $reports, function( $item ) { return 'success' !== $item['type']; } ) );
+$status_class   = ! $scan_ok || $risky_external_count > 0 ? 'danger' : ( $score < 80 ? 'warning' : 'success' );
+$status_text    = ! $scan_ok ? 'اسکن نیاز به بررسی دارد' : ( $risky_external_count > 0 ? 'وابستگی اجرایی پیدا شد' : 'وابستگی اجرایی پیدا نشد' );
+?>
 <div class="wrap ms-app-wrap" dir="rtl">
-    <div class="ms-glass-dashboard">
-        <header class="app-header">
-            <div class="brand">
-                <h1>تحلیل‌گر عملکرد سایت</h1>
-                <span class="version">دستیار هوشمند بررسی سرعت و سلامت</span>
+    <div class="ms-dashboard">
+        <header class="ms-topbar">
+            <div class="ms-brand">
+                <span class="ms-logo" aria-hidden="true">م</span>
+                <div><h1>پایشگر تاب‌آوری موستک</h1><p>شناسایی و کنترل وابستگی‌های خارجی وردپرس</p></div>
             </div>
-            <div class="global-status safe">✅ وضعیت سیستم: در حال نظارت</div>
+            <div class="ms-system-state <?php echo esc_attr( $status_class ); ?>"><span></span><?php echo esc_html( $status_text ); ?></div>
         </header>
 
-        <main class="app-grid">
-            <aside class="app-sidebar glass-panel">
-                <ul class="nav-tabs">
-                    <li class="active" data-tab="dashboard">📊 وضعیت کلی سایت</li>
-                    <li data-tab="backup">💾 نقطه امن (بکاپ)</li>
-                    <li data-tab="network">🌐 مدیریت تحریم‌ها و شبکه</li>
-                    <li data-tab="assets">📦 فایل‌های سنگین</li>
-                    <li data-tab="database">🗄️ سلامت پایگاه داده</li>
-                    <li data-tab="server">🖥️ اطلاعات سرور</li>
-                </ul>
+        <div class="ms-layout">
+            <aside class="ms-sidebar">
+                <nav class="ms-nav" aria-label="بخش‌های تحلیل">
+                    <button class="active" data-tab="dashboard"><span>01</span>نمای کلی</button>
+                    <button data-tab="external"><span>02</span>تحلیل دامنه‌ها <?php if ( $external_count ) : ?><b><?php echo esc_html( $external_count ); ?></b><?php endif; ?></button>
+                    <button data-tab="network"><span>03</span>کنترل تاب‌آوری</button>
+                    <button data-tab="assets"><span>04</span>رسانه‌های سنگین</button>
+                    <button data-tab="server"><span>05</span>سرور</button>
+                    <button data-tab="academy"><span>06</span>آموزش کار با ابزار</button>
+                </nav>
+                <div class="ms-sidebar-note"><strong>حریم خصوصی کامل</strong><p>نتیجه اسکن روی وردپرس شما می‌ماند و به هیچ سروری ارسال نمی‌شود.</p></div>
             </aside>
 
-            <section class="app-content">
+            <main class="ms-content">
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="ms-section-head"><div><span class="eyebrow">وضعیت امروز</span><h2>سلامت عملکرد سایت</h2></div><button class="ms-button ms-retest-btn">اسکن دوباره</button></div>
 
-                <!-- TAB 1: Main Dashboard -->
-                <div id="tab-dashboard" class="tab-pane active">
-
-                    <?php $test_failed = ! isset($homepage_stats['status']) || $homepage_stats['status'] !== 'success'; ?>
-
-                    <?php if ( $test_failed ): ?>
-                        <!-- حالت خطا: تست سرعت انجام نشد -->
-                        <div class="glass-card error-banner">
-                            <div class="error-icon">🚫</div>
-                            <div class="error-content">
-                                <h2>تست سرعت سایت انجام نشد</h2>
-                                <p class="error-msg"><?php echo esc_html( $homepage_stats['message'] ?? 'ارتباط با سایت برقرار نشد.' ); ?></p>
-                                <div class="error-fix">
-                                    <strong>💡 چه کار کنم؟</strong>
-                                    <p><?php echo esc_html( $homepage_stats['reason'] ?? 'اگر سایت روی لوکال‌هاست است، این ابزار را روی سرور اصلی اجرا کنید.' ); ?></p>
-                                </div>
-                                <button class="btn-glass ms-retest-btn" style="width:auto; margin-top:15px;">🔄 تلاش مجدد برای تست سرعت</button>
-                            </div>
-                        </div>
-                    <?php else: ?>
-                        <!-- امتیاز کلی سرعت -->
-                        <?php $score = $homepage_stats['score'] ?? 0;
-                            $score_color = $score >= 80 ? 'var(--ms-success)' : ($score >= 50 ? 'var(--ms-warning)' : 'var(--ms-danger)');
-                            $score_text  = $score >= 80 ? 'عالی 🎉' : ($score >= 50 ? 'متوسط ⚠️' : 'ضعیف 🐌');
-                            $score_desc  = $score >= 80 ? 'سایت شما سریع است و کاربران تجربه خوبی دارند.' : ($score >= 50 ? 'سایت شما قابل قبول است اما جای بهبود دارد. راهکارهای پایین را بخوانید.' : 'سایت شما کُند است و نیاز به بهینه‌سازی فوری دارد. راهکارهای پایین را دنبال کنید.');
-                        ?>
-                        <div class="glass-card score-card">
-                            <div class="score-circle" style="background: conic-gradient(<?php echo $score_color; ?> <?php echo $score * 3.6; ?>deg, #e2e8f0 0deg);">
-                                <div class="score-inner">
-                                    <span class="score-num" style="color:<?php echo $score_color; ?>;"><?php echo esc_html( $score ); ?></span>
-                                    <span class="score-max">از ۱۰۰</span>
-                                </div>
-                            </div>
-                            <div class="score-info">
-                                <h2>امتیاز سرعت سایت شما: <span style="color:<?php echo $score_color; ?>;"><?php echo $score_text; ?></span></h2>
-                                <p><?php echo esc_html( $score_desc ); ?></p>
-                                <button class="btn-glass ms-retest-btn" style="width:auto; margin-top:12px; background:var(--ms-text-muted); font-size:13px; padding:8px 16px;">🔄 تست مجدد سرعت</button>
-                            </div>
+                    <?php if ( ! $scan_ok ) : ?>
+                        <div class="ms-alert danger"><div class="ms-alert-icon">!</div><div><h3>اسکن صفحه اصلی کامل نشد</h3><p><?php echo esc_html( $homepage_stats['message'] ?? 'پاسخی از صفحه اصلی دریافت نشد.' ); ?></p><small><?php echo esc_html( $homepage_stats['reason'] ?? 'تنظیمات فایروال و دسترسی loopback وردپرس را بررسی کنید.' ); ?></small></div></div>
+                    <?php else : ?>
+                        <div class="ms-hero-grid">
+                            <article class="ms-score-card">
+                                <div class="ms-score" style="--score:<?php echo esc_attr( $score ); ?>"><div><strong><?php echo esc_html( $score ); ?></strong><span>از ۱۰۰</span></div></div>
+                                <div><span class="eyebrow">امتیاز عملکرد</span><h3><?php echo $score >= 80 ? 'عملکرد خوب و پایدار' : ( $score >= 50 ? 'قابل قبول، نیازمند بهبود' : 'نیازمند اقدام فوری' ); ?></h3><p>این امتیاز از پاسخ سرور، حجم صفحه، تعداد فایل‌ها و وابستگی خارجی ساخته شده است.</p></div>
+                            </article>
+                            <article class="ms-resilience-card <?php echo $risky_external_count ? 'danger' : 'success'; ?>">
+                                <span class="eyebrow">ریسک قطع اینترنت بین‌الملل</span>
+                                <strong><?php echo $risky_external_count ? 'بالا' : 'پایین'; ?></strong>
+                                <p><?php echo $risky_external_count ? esc_html( $risky_external_count ) . ' دامنه دارای وابستگی اجرایی یا تماس سروری است.' : esc_html( $external_count ) . ' دامنه صرفاً در کد دیده شد و وابستگی اجرایی تأیید نشد.'; ?></p>
+                                <?php if ( $external_count ) : ?><button class="ms-link-button" data-open-tab="external">مشاهده جزئیات و راه‌حل ←</button><?php endif; ?>
+                            </article>
                         </div>
 
-                        <div class="data-grid">
-                            <div class="glass-card stat-card">
-                                <h3>⚡ زمان پاسخ سرور (TTFB)</h3>
-                                <?php $ttfb = $homepage_stats['ttfb'] ?? 0; ?>
-                                <div class="stat-value <?php echo $ttfb > 1.5 ? 'danger' : ($ttfb > 0.8 ? 'warning' : 'success'); ?>">
-                                    <?php echo esc_html( $ttfb ); ?><small> ثانیه</small>
-                                </div>
-                                <p class="stat-desc">مدت زمان اولین پاسخ سرور. باید زیر ۰.۸ ثانیه باشد.</p>
-                            </div>
-
-                            <div class="glass-card stat-card">
-                                <h3>⏱️ زمان کل بارگذاری</h3>
-                                <?php $speed = $homepage_stats['time'] ?? 0; ?>
-                                <div class="stat-value <?php echo $speed > 3 ? 'danger' : ($speed > 2 ? 'warning' : 'success'); ?>">
-                                    <?php echo esc_html( $speed ); ?><small> ثانیه</small>
-                                </div>
-                                <p class="stat-desc">زمان تخمینی لود کامل صفحه شامل تصاویر و اسکریپت‌ها.</p>
-                            </div>
-
-                            <div class="glass-card stat-card">
-                                <h3>📄 حجم صفحه اصلی</h3>
-                                <?php $psize = $homepage_stats['size'] ?? 0; ?>
-                                <div class="stat-value <?php echo $psize > 3 ? 'danger' : ($psize > 2 ? 'warning' : 'success'); ?>">
-                                    <?php echo esc_html( $psize ); ?><small> مگابایت</small>
-                                </div>
-                                <p class="stat-desc">حجم کل صفحه. بهتر است زیر ۲ مگابایت باشد.</p>
-                            </div>
-
-                            <div class="glass-card stat-card">
-                                <h3>🔗 تعداد فایل‌ها</h3>
-                                <?php $acount = $homepage_stats['assets_count'] ?? 0; ?>
-                                <div class="stat-value <?php echo $acount > 50 ? 'warning' : 'success'; ?>">
-                                    <?php echo esc_html( $acount ); ?><small> فایل</small>
-                                </div>
-                                <p class="stat-desc">تعداد فایل‌های CSS، JS و تصویر هنگام باز شدن صفحه.</p>
-                            </div>
-
-                            <div class="glass-card stat-card">
-                                <h3>🗄️ بار اضافه دیتابیس</h3>
-                                <div class="stat-value <?php echo $autoload_size > 1 ? 'danger' : 'success'; ?>">
-                                    <?php echo esc_html( $autoload_size ); ?><small> مگابایت</small>
-                                </div>
-                                <p class="stat-desc">حجم اطلاعاتی که بی‌دلیل در هر بازدید بارگذاری می‌شود.</p>
-                            </div>
-
-                            <div class="glass-card stat-card action-card">
-                                <h3>🗑️ فایل‌های موقت اضافی</h3>
-                                <div class="stat-value <?php echo $transients > 0 ? 'warning' : 'success'; ?>"><?php echo esc_html( $transients ); ?></div>
-                                <p class="stat-desc">کش‌های تاریخ‌گذشته که فقط فضا اشغال کرده‌اند.</p>
-                                <?php if( $transients > 0 ): ?>
-                                    <button class="btn-glass" data-action="ms_clear_transients" data-msg="آیا مایلید فایل‌های موقت و تاریخ‌گذشته پاک شوند؟ این کار هیچ آسیبی به اطلاعات شما نمی‌زند.">پاکسازی امن</button>
-                                <?php endif; ?>
-                            </div>
+                        <div class="ms-metrics">
+                            <article><span>زمان دریافت پاسخ</span><strong><?php echo esc_html( $homepage_stats['ttfb'] ?? 0 ); ?><small> ثانیه</small></strong><em class="<?php echo ( $homepage_stats['ttfb'] ?? 0 ) > .8 ? 'bad' : 'good'; ?>"><?php echo ( $homepage_stats['ttfb'] ?? 0 ) > .8 ? 'نیازمند بهبود' : 'مناسب'; ?></em></article>
+                            <article><span>زمان اسکن داخلی</span><strong><?php echo esc_html( $homepage_stats['time'] ?? 0 ); ?><small> ثانیه</small></strong><em>بدون تماس خارجی</em></article>
+                            <article><span>حجم قابل محاسبه</span><strong><?php echo esc_html( $homepage_stats['size'] ?? 0 ); ?><small> MB</small></strong><em>HTML و فایل‌های محلی</em></article>
+                            <article><span>تعداد منابع</span><strong><?php echo esc_html( $homepage_stats['assets_count'] ?? 0 ); ?><small> فایل</small></strong><em><?php echo esc_html( $homepage_stats['internal_count'] ?? 0 ); ?> داخلی</em></article>
                         </div>
                     <?php endif; ?>
 
-                    <!-- دستیار هوشمند -->
-                    <div class="glass-card report-card">
-                        <div class="card-header"><h2>🔧 دستیار هوشمند رفع مشکلات</h2></div>
-                        <div class="card-body">
-                            <?php
-                                // شمارش مشکلات بر اساس نوع
-                                $danger_count = count( array_filter( $reports, function($r){ return $r['type']==='danger'; } ) );
-                                $warning_count = count( array_filter( $reports, function($r){ return $r['type']==='warning'; } ) );
-                            ?>
-                            <?php if ( $danger_count > 0 || $warning_count > 0 ): ?>
-                                <div class="report-summary">
-                                    <?php if($danger_count): ?><span class="summary-badge danger"><?php echo $danger_count; ?> مشکل جدی</span><?php endif; ?>
-                                    <?php if($warning_count): ?><span class="summary-badge warning"><?php echo $warning_count; ?> هشدار</span><?php endif; ?>
-                                    <span style="color:var(--ms-text-muted); font-size:13px;">به ترتیب اولویت، موارد زیر را حل کنید:</span>
-                                </div>
-                            <?php endif; ?>
-                            <ul class="solutions-list">
-                                <?php
-                                    // مرتب‌سازی: اول خطرناک، بعد هشدار، آخر موفق
-                                    $order = ['danger'=>0, 'warning'=>1, 'success'=>2];
-                                    usort( $reports, function($a,$b) use($order){ return $order[$a['type']] <=> $order[$b['type']]; } );
-                                    foreach( $reports as $i => $report ):
-                                ?>
-                                    <li class="report-item <?php echo esc_attr( $report['type'] ); ?>">
-                                        <div class="report-item-header">
-                                            <span class="report-badge <?php echo esc_attr($report['type']); ?>">
-                                                <?php echo $report['type']==='danger' ? '🔴 مهم' : ($report['type']==='warning' ? '🟡 هشدار' : '🟢 خوب'); ?>
-                                            </span>
-                                            <h4><?php echo esc_html( $report['title'] ); ?></h4>
-                                        </div>
-                                        <p><strong>❓ علت:</strong> <?php echo esc_html( $report['cause'] ); ?></p>
-                                        <p><strong>✅ راه حل:</strong> <?php echo esc_html( $report['fix'] ); ?></p>
-                                    </li>
-                                <?php endforeach; ?>
-                            </ul>
+                    <div class="ms-panel">
+                        <div class="ms-panel-head"><div><span class="eyebrow">برنامه اقدام</span><h3>راهکارها به ترتیب اولویت</h3></div><span class="ms-count"><?php echo esc_html( $issue_count ); ?> مورد</span></div>
+                        <div class="ms-reports">
+                            <?php foreach ( $reports as $report ) : ?>
+                                <article class="ms-report <?php echo esc_attr( $report['type'] ); ?>">
+                                    <span class="ms-priority"><?php echo 'danger' === $report['type'] ? 'فوری' : ( 'warning' === $report['type'] ? 'بهبود' : 'سالم' ); ?></span>
+                                    <div><h4><?php echo esc_html( $report['title'] ); ?></h4><p><b>دلیل:</b> <?php echo esc_html( $report['cause'] ); ?></p><p class="fix"><b>راه‌حل:</b> <?php echo esc_html( $report['fix'] ); ?></p></div>
+                                </article>
+                            <?php endforeach; ?>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <!-- TAB 2: Backup Manager -->
-                <div id="tab-backup" class="tab-pane">
-                    <div class="glass-card">
-                        <div class="card-header"><h2>مدیریت نقاط امن (بکاپ پایگاه داده)</h2></div>
-                        <div class="card-body">
-                            <div class="ms-guide-box">
-                                <strong>💡 چرا باید بکاپ بگیرم و چطور اطلاعاتم را برگردانم؟</strong>
-                                <p>همیشه قبل از پاکسازی دیتابیس یا اعمال تغییرات، یک «نقطه امن» ایجاد کنید. سیستم ما در عرض چند ثانیه از قلب سایت شما (دیتابیس) یک کپی می‌گیرد.</p>
-                                <ul>
-                                    <li><strong>چگونه بکاپ بگیرم؟</strong> فقط کافیست روی دکمه آبی رنگ زیر کلیک کنید.</li>
-                                    <li><strong>چگونه سایت را به گذشته برگردانم؟</strong> اگر مشکلی پیش آمد، ابتدا بکاپ را «دانلود» کنید. سپس وارد کنترل پنل هاست شوید، ابزار <code>phpMyAdmin</code> را باز کرده و در تب <code>Import</code> فایل را آپلود کنید.</li>
-                                </ul>
-                            </div>
-
-                            <div style="margin-bottom: 20px;">
-                                <button class="btn-glass ms-create-backup-btn" style="background:var(--ms-primary); font-size:16px; padding:12px 24px; width:auto;">➕ ایجاد یک نقطه امن جدید (بکاپ)</button>
-                            </div>
-
-                            <table class="ms-table">
-                                <thead>
-                                    <tr>
-                                        <th>نام فایل بکاپ</th>
-                                        <th>تاریخ ایجاد</th>
-                                        <th>حجم فایل</th>
-                                        <th>عملیات (مدیریت)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(empty($ms_backups)): ?>
-                                        <tr><td colspan="4" style="text-align:center;">هنوز هیچ بکاپی گرفته نشده است.</td></tr>
-                                    <?php else: ?>
-                                        <?php foreach($ms_backups as $bkp): ?>
-                                        <tr>
-                                            <td dir="ltr" style="text-align:left; font-size:12px;"><?php echo esc_html($bkp['filename']); ?></td>
-                                            <td dir="ltr" style="text-align:left; font-size:13px;"><?php echo esc_html($bkp['date']); ?></td>
-                                            <td style="font-weight:bold; color:var(--ms-text-muted);"><?php echo esc_html($bkp['size']); ?></td>
-                                            <td>
-                                                <a href="<?php echo esc_url( wp_nonce_url( admin_url('admin-post.php?action=ms_download_backup&file=' . urlencode($bkp['filename'])), 'ms_download_backup' ) ); ?>" class="btn-glass" style="background:var(--ms-success); padding:5px 10px; font-size:12px; display:inline-block; text-align:center; width:auto;">⬇️ دانلود</a>
-                                                <button class="btn-glass ms-delete-backup-btn" style="background:var(--ms-danger); padding:5px 10px; font-size:12px; width:auto;" data-file="<?php echo esc_attr($bkp['filename']); ?>">🗑️ حذف</button>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
+                <section id="tab-external" class="tab-pane">
+                    <div class="ms-section-head"><div><span class="eyebrow">بخش تشخیص</span><h2>تحلیل جامع دامنه‌های خارجی</h2><p>منابع واقعی، URLهای موجود در کد و تماس‌های سروری را بدون باز کردن دامنه خارجی فهرست می‌کند.</p></div></div>
+                    <div class="ms-compare"><article><strong>تحلیل دامنه‌ها چیست؟</strong><p>فقط تشخیص و گزارش می‌دهد. «اشاره URL در کد» لزوماً بارگذاری نمی‌شود، اما اسکریپت، استایل، فونت، تصویر و تماس سروری وابستگی واقعی‌اند.</p></article><article><strong>کنترل تاب‌آوری چیست؟</strong><p>یک اقدام عملی و اضطراری است که درخواست‌های خارجی را متوقف می‌کند؛ ممکن است پرداخت، پیامک، لایسنس یا نقشه را هم قطع کند.</p></article></div>
+                    <?php if ( ! $scan_ok && empty( $external_assets ) ) : ?><div class="ms-empty"><h3>ابتدا اسکن را با موفقیت اجرا کنید</h3><p>دکمه اسکن دوباره، در صورت خطای سرور از روش مرورگر استفاده می‌کند.</p></div>
+                    <?php elseif ( empty( $external_assets ) ) : ?><div class="ms-empty success"><span>✓</span><h3>وابستگی خارجی پیدا نشد</h3><p>فونت، استایل، اسکریپت، تصویر، رسانه و iframe قابل تشخیص صفحه اصلی محلی هستند.</p></div>
+                    <?php else : ?>
+                        <div class="ms-alert warning"><div class="ms-alert-icon">!</div><div><h3>نوع هر دامنه را قبل از اقدام بررسی کنید</h3><p>«اشاره URL در کد» ممکن است فقط لینک یا metadata باشد و سرعت را کم نکند. منابع اجرایی و تماس‌های سروری در قطعی اینترنت ریسک واقعی دارند.</p></div></div>
+                        <div class="ms-domain-grid">
+                            <?php foreach ( $external_assets as $item ) : ?>
+                                <article class="ms-domain-card"><div><span class="ms-domain-icon">↗</span><div><h3 dir="ltr"><?php echo esc_html( $item['domain'] ); ?></h3><p><?php echo esc_html( implode( '، ', $item['types'] ) ); ?></p></div></div><strong><?php echo esc_html( $item['count'] ); ?> مورد ردیابی‌شده</strong><ul><?php foreach ( $item['samples'] as $sample ) : ?><li dir="ltr" title="<?php echo esc_attr( $sample ); ?>"><?php echo esc_html( $sample ); ?></li><?php endforeach; ?></ul><button class="ms-button secondary ms-network-action" data-domain="<?php echo esc_attr( $item['domain'] ); ?>" data-type="block">مسدودسازی تماس‌های سروری این دامنه</button></article>
+                            <?php endforeach; ?>
                         </div>
+                    <?php endif; ?>
+                </section>
+
+                <section id="tab-network" class="tab-pane">
+                    <div class="ms-section-head"><div><span class="eyebrow">بخش کنترل</span><h2>کنترل تاب‌آوری و تماس‌های شبکه</h2><p>این بخش برخلاف تحلیل دامنه‌ها، رفتار سایت را واقعاً تغییر می‌دهد.</p></div></div>
+                    <div class="ms-toggle-card <?php echo $resilience_mode ? 'active' : ''; ?>">
+                        <div><span class="eyebrow">حالت قطعی اینترنت</span><h3><?php echo $resilience_mode ? 'تاب‌آوری فعال است' : 'تاب‌آوری غیرفعال است'; ?></h3><p>در حالت فعال، درخواست‌های HTTP سروری و فایل‌های ثبت‌شده وردپرس به دامنه‌های خارجی متوقف می‌شوند. قبل از فعال‌سازی، در محیط آزمایشی بررسی کنید.</p></div>
+                        <label class="ms-switch"><input type="checkbox" id="ms-resilience-toggle" <?php checked( $resilience_mode ); ?>><span></span></label>
                     </div>
-                </div>
-
-                <!-- TAB 3: Network -->
-                <div id="tab-network" class="tab-pane">
-                    <div class="glass-card">
-                        <div class="card-header"><h2>مدیریت ارتباطات خارجی و تحریم‌ها (بسیار مهم در ایران)</h2></div>
-                        <div class="card-body">
-                            <div class="ms-guide-box">
-                                <strong>💡 راهنمای ساده: چرا این بخش به سرعت سایت شما کمک می‌کند؟</strong>
-                                <p>گاهی قالب یا افزونه‌های شما تلاش می‌کنند به سایت‌های خارجی (مثل فونت گوگل) متصل شوند. چون سرور در ایران است یا سایت مقصد ما را تحریم کرده، ارتباط برقرار نمی‌شود و سایت برای چند ثانیه "گیر" می‌کند.</p>
-                                <ul>
-                                    <li><strong>ستون «زمان پاسخ» را ببینید:</strong> اگر عدد این ستون بالا (مثلاً بیشتر از ۲ ثانیه) بود، یعنی آن دامنه سایت شما را کند می‌کند و بهتر است مسدودش کنید.</li>
-                                    <li><strong>نگران خرابی نباشید:</strong> اگر بعد از مسدود کردن مشکلی دیدید، دوباره روی "آزادسازی" کلیک کنید تا همه‌چیز به حالت اول برگردد.</li>
-                                </ul>
-                            </div>
-
-                            <button class="btn-glass ms-clear-logs-btn" style="background:var(--ms-text-muted); width:auto; padding:8px 16px; font-size:13px; margin-bottom:15px;">🔄 پاک کردن لیست و شروع نظارت مجدد</button>
-
-                            <table class="ms-table">
-                                <thead>
-                                    <tr>
-                                        <th>آدرس سایت خارجی</th>
-                                        <th>وضعیت ارتباط</th>
-                                        <th>زمان پاسخ</th>
-                                        <th>تعداد تماس</th>
-                                        <th>عملیات امن</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(empty($network_logs)): ?>
-                                        <tr><td colspan="5" style="text-align:center;">هنوز هیچ ارتباط خارجی ثبت نشده است. کمی در سایت خود کار کنید و سپس این صفحه را رفرش کنید.</td></tr>
-                                    <?php else: ?>
-                                        <?php foreach($network_logs as $host => $log):
-                                            $is_blocked = in_array($host, $blocked_domains, true);
-                                            $has_error = ! empty($log['is_error']);
-                                            $duration = $log['duration'] ?? null;
-                                            $is_slow = ( $duration !== null && $duration > 2 );
-                                        ?>
-                                        <tr>
-                                            <td dir="ltr" style="text-align:left; font-weight:bold;"><?php echo esc_html($host); ?></td>
-                                            <td dir="ltr" style="text-align:left; font-size:13px; color: <?php echo $has_error ? 'var(--ms-danger)' : 'var(--ms-success)'; ?>;">
-                                                <?php echo $has_error ? '❌ مسدود یا فیلتر شده' : '✅ ارتباط موفق'; ?><br>
-                                                <span style="font-size:11px; color:#888;"><?php echo esc_html($log['status']); ?></span>
-                                            </td>
-                                            <td style="font-weight:bold; color: <?php echo $is_slow ? 'var(--ms-danger)' : 'var(--ms-text-muted)'; ?>;">
-                                                <?php echo $duration !== null ? esc_html($duration) . ' ثانیه' : '—'; ?>
-                                                <?php if($is_slow): ?><br><span style="font-size:10px; color:var(--ms-danger);">⚠️ کُند</span><?php endif; ?>
-                                            </td>
-                                            <td style="text-align:center;"><?php echo esc_html($log['count'] ?? 1); ?></td>
-                                            <td>
-                                                <?php if($is_blocked): ?>
-                                                    <button class="btn-glass ms-network-action" style="background:var(--ms-success); width:auto;" data-domain="<?php echo esc_attr($host); ?>" data-type="unblock">🔓 آزادسازی</button>
-                                                <?php else: ?>
-                                                    <button class="btn-glass ms-network-action" style="background:var(--ms-danger); width:auto;" data-domain="<?php echo esc_attr($host); ?>" data-type="block">🚫 مسدودسازی</button>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                    <div class="ms-panel"><div class="ms-panel-head"><div><span class="eyebrow">۲۴ ساعت اخیر</span><h3>دامنه‌های تماس‌گرفته‌شده توسط وردپرس</h3></div><?php if ( $network_logs ) : ?><button class="ms-button ghost ms-clear-logs-btn">پاک‌کردن تاریخچه</button><?php endif; ?></div>
+                        <?php if ( empty( $network_logs ) ) : ?><div class="ms-empty compact"><p>هنوز تماس خارجی سروری ثبت نشده است.</p></div><?php else : ?><div class="ms-table-wrap"><table class="ms-table"><thead><tr><th>دامنه</th><th>وضعیت</th><th>زمان</th><th>تعداد</th><th>کنترل</th></tr></thead><tbody><?php foreach ( $network_logs as $domain => $log ) : ?><tr><td dir="ltr"><?php echo esc_html( $domain ); ?></td><td><?php echo esc_html( $log['status'] ); ?></td><td><?php echo null === $log['duration'] ? '—' : esc_html( $log['duration'] ) . ' ثانیه'; ?></td><td><?php echo esc_html( $log['count'] ); ?></td><td><button class="ms-mini-button ms-network-action" data-domain="<?php echo esc_attr( $domain ); ?>" data-type="<?php echo in_array( $domain, $blocked_domains, true ) ? 'unblock' : 'block'; ?>"><?php echo in_array( $domain, $blocked_domains, true ) ? 'آزادسازی' : 'مسدودسازی'; ?></button></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
                     </div>
-                </div>
+                </section>
 
-                <!-- TAB 4: Assets -->
-                <div id="tab-assets" class="tab-pane">
-                    <div class="glass-card">
-                        <div class="card-header"><h2>سنگین‌ترین تصاویر سایت</h2></div>
-                        <div class="card-body">
-                            <p>تصاویر حجیم یکی از اصلی‌ترین دلایل کُندی سایت در موبایل هستند. لیست زیر تصاویری را نشان می‌دهد که بیش از حد سنگین هستند.</p>
-                            <?php if( empty($heavy_images) ): ?>
-                                <p style="color:var(--ms-success); font-weight:bold;">🎉 عالی! تصویر خیلی سنگینی در سایت شما پیدا نشد.</p>
-                            <?php else: ?>
-                                <table class="ms-table">
-                                    <thead><tr><th>نام عکس</th><th>حجم عکس (باید زیر ۰.۳ مگابایت باشد)</th><th>لینک</th></tr></thead>
-                                    <tbody>
-                                        <?php foreach($heavy_images as $img): ?>
-                                            <tr>
-                                                <td><?php echo esc_html($img['title']); ?></td>
-                                                <td style="color:var(--ms-danger);font-weight:bold;"><?php echo esc_html($img['size']); ?></td>
-                                                <td><a href="<?php echo esc_url($img['url']); ?>" target="_blank">دیدن عکس</a></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
+                <section id="tab-assets" class="tab-pane"><div class="ms-section-head"><div><span class="eyebrow">رسانه</span><h2>تصاویر سنگین سایت</h2><p>فایل‌های بالای ۲۰۰ کیلوبایت در uploads، قالب فعال و قالب والد؛ شامل تصاویر سیستمی مانند صفحه ۴۰۴.</p></div></div><?php if ( empty( $heavy_images ) ) : ?><div class="ms-empty success"><span>✓</span><h3>تصویر سنگینی پیدا نشد</h3></div><?php else : ?><div class="ms-panel"><div class="ms-table-wrap"><table class="ms-table"><thead><tr><th>تصویر</th><th>محل</th><th>حجم</th><th>راهکار</th></tr></thead><tbody><?php foreach ( $heavy_images as $image ) : ?><tr><td><a href="<?php echo esc_url( $image['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $image['title'] ?: 'بدون عنوان' ); ?></a></td><td><?php echo esc_html( $image['source'] ?? 'سایت' ); ?></td><td><?php echo esc_html( $image['size'] ); ?></td><td>تبدیل به WebP/AVIF و استفاده از ابعاد صحیح</td></tr><?php endforeach; ?></tbody></table></div></div><?php endif; ?></section>
 
-                <!-- TAB 5: Database -->
-                <div id="tab-database" class="tab-pane">
-                    <?php
-                        // ساخت نمونه برای داده‌های اضافی دیتابیس
-                        $db_profiler = new \Mediasanat\PA\Modules\DatabaseProfiler();
-                        $revisions   = $db_profiler->count_post_revisions();
-                        $spam        = $db_profiler->count_spam_comments();
-                        $trash       = $db_profiler->count_trashed_posts();
-                        $total_db    = $db_profiler->get_total_db_size();
-                        $big_options = $db_profiler->get_largest_autoloads(10);
-                    ?>
-                    <div class="glass-card">
-                        <div class="card-header"><h2>جزئیات و سلامت دیتابیس (پایگاه داده)</h2></div>
-                        <div class="card-body">
-                            <div class="ms-guide-box">
-                                <strong>دیتابیس چیست و چه ربطی به سرعت دارد؟</strong>
-                                <p>دیتابیس قلب سایت شماست. بخشی به نام <strong>Autoload</strong> تنظیمات سایت را نگه می‌دارد. اگر افزونه‌های زیادی نصب و پاک کنید، این بخش پر از زباله می‌شود و سایت کُند می‌شود.</p>
-                            </div>
+                <section id="tab-server" class="tab-pane"><div class="ms-section-head"><div><span class="eyebrow">زیرساخت</span><h2>وضعیت سرور وردپرس</h2></div></div><div class="ms-server-grid"><?php $server_rows = [ 'نسخه PHP' => $server_health['php_version'], 'نسخه وردپرس' => $server_health['wp_version'], 'محدودیت حافظه' => $server_health['memory_limit'], 'OPcache' => $server_health['opcache_active'] ? 'فعال' : 'غیرفعال', 'Object Cache' => $server_health['object_cache'] ? 'فعال' : 'غیرفعال', 'کش صفحه' => $server_health['page_cache'] ? 'اعلام‌شده فعال' : 'اعلام‌نشده', 'افزونه‌های فعال' => $server_health['active_plugins'], 'رویدادهای زمان‌بندی' => $server_health['cron_events'], 'پردازش تصویر' => ( $server_health['gd_active'] || $server_health['imagick_active'] ) ? 'فعال' : 'غیرفعال', 'HTTPS' => $server_health['is_https'] ? 'فعال' : 'غیرفعال', 'فضای خالی' => $server_health['disk_free'] ]; foreach ( $server_rows as $label => $value ) : ?><article><span><?php echo esc_html( $label ); ?></span><strong dir="auto"><?php echo esc_html( $value ); ?></strong></article><?php endforeach; ?></div></section>
 
-                            <div class="data-grid" style="grid-template-columns: repeat(4, 1fr);">
-                                <div class="glass-card stat-card">
-                                    <h3>💾 حجم کل دیتابیس</h3>
-                                    <div class="stat-value normal"><?php echo esc_html($total_db); ?> MB</div>
-                                </div>
-                                <div class="glass-card stat-card">
-                                    <h3>🗄️ حجم Autoload</h3>
-                                    <div class="stat-value <?php echo $autoload_size > 1 ? 'danger' : 'success'; ?>"><?php echo esc_html($autoload_size); ?> MB</div>
-                                </div>
-                                <div class="glass-card stat-card">
-                                    <h3>📝 نسخه‌های قدیمی نوشته‌ها</h3>
-                                    <div class="stat-value <?php echo $revisions > 200 ? 'warning' : 'normal'; ?>"><?php echo esc_html($revisions); ?></div>
-                                </div>
-                                <div class="glass-card stat-card">
-                                    <h3>🗑️ اسپم و زباله</h3>
-                                    <div class="stat-value <?php echo ($spam+$trash) > 50 ? 'warning' : 'normal'; ?>"><?php echo esc_html($spam + $trash); ?></div>
-                                </div>
-                            </div>
-
-                            <h3 style="margin-top:30px;">🔍 سنگین‌ترین تنظیمات Autoload (برای شناسایی افزونه مقصر)</h3>
-                            <p style="color:var(--ms-text-muted); font-size:13px;">اگر یکی از این موارد حجم غیرعادی داشت، احتمالاً مربوط به یک افزونه پرمصرف است. با جستجوی نام آن در گوگل می‌توانید افزونه مربوطه را پیدا کنید.</p>
-                            <table class="ms-table">
-                                <thead><tr><th>نام تنظیم (Option)</th><th>حجم (کیلوبایت)</th></tr></thead>
-                                <tbody>
-                                    <?php foreach($big_options as $opt): ?>
-                                        <tr>
-                                            <td dir="ltr" style="text-align:left; font-family:monospace; font-size:12px;"><?php echo esc_html($opt['option_name']); ?></td>
-                                            <td style="font-weight:bold; color: <?php echo $opt['size_kb'] > 100 ? 'var(--ms-danger)' : 'var(--ms-text-muted)'; ?>;"><?php echo esc_html($opt['size_kb']); ?> KB</td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TAB 6: Server Info -->
-                <div id="tab-server" class="tab-pane">
-                    <div class="glass-card">
-                        <div class="card-header"><h2>اطلاعات فنی سرور و هاست</h2></div>
-                        <div class="card-body">
-                            <div class="ms-guide-box">
-                                <strong>این اطلاعات به چه دردی می‌خورد؟</strong>
-                                <p>اگر خواستید از پشتیبانی هاست کمک بگیرید یا مشکلی را رفع کنید، این اطلاعات را به آن‌ها نشان دهید. موارد قرمز رنگ نیاز به توجه دارند.</p>
-                            </div>
-                            <table class="ms-table">
-                                <tbody>
-                                    <tr><td>نسخه PHP</td><td dir="ltr" style="text-align:left; font-weight:bold; color: <?php echo version_compare($server_health['php_version'],'8.0','<') ? 'var(--ms-danger)' : 'var(--ms-success)'; ?>;"><?php echo esc_html($server_health['php_version']); ?></td></tr>
-                                    <tr><td>نسخه وردپرس</td><td dir="ltr" style="text-align:left;"><?php echo esc_html($server_health['wp_version']); ?></td></tr>
-                                    <tr><td>نسخه دیتابیس (MySQL)</td><td dir="ltr" style="text-align:left;"><?php echo esc_html($server_health['db_version']); ?></td></tr>
-                                    <tr><td>محدودیت حافظه (Memory Limit)</td><td dir="ltr" style="text-align:left; font-weight:bold;"><?php echo esc_html($server_health['memory_limit']); ?></td></tr>
-                                    <tr><td>حداکثر زمان اجرا</td><td dir="ltr" style="text-align:left;"><?php echo esc_html($server_health['max_exec_time']); ?> ثانیه</td></tr>
-                                    <tr><td>حداکثر حجم آپلود</td><td dir="ltr" style="text-align:left;"><?php echo esc_html($server_health['upload_max']); ?></td></tr>
-                                    <tr><td>گواهی امنیتی SSL (HTTPS)</td><td dir="ltr" style="text-align:left; font-weight:bold; color: <?php echo $server_health['is_https'] ? 'var(--ms-success)' : 'var(--ms-danger)'; ?>;"><?php echo $server_health['is_https'] ? '✅ فعال' : '❌ غیرفعال'; ?></td></tr>
-                                    <tr><td>شتاب‌دهنده OPcache</td><td dir="ltr" style="text-align:left; color: <?php echo $server_health['opcache_active'] ? 'var(--ms-success)' : 'var(--ms-warning)'; ?>;"><?php echo $server_health['opcache_active'] ? '✅ فعال' : '⚠️ غیرفعال'; ?></td></tr>
-                                    <tr><td>کش Redis</td><td dir="ltr" style="text-align:left;"><?php echo $server_health['redis_active'] ? '✅ موجود' : '➖ نصب نشده'; ?></td></tr>
-                                    <tr><td>پردازش تصویر (GD / Imagick)</td><td dir="ltr" style="text-align:left;"><?php echo ($server_health['gd_active'] || $server_health['imagick_active']) ? '✅ فعال' : '❌ غیرفعال'; ?></td></tr>
-                                    <tr><td>فضای خالی دیسک</td><td dir="ltr" style="text-align:left;"><?php echo esc_html($server_health['disk_free']); ?></td></tr>
-                                    <tr><td>نرم‌افزار سرور</td><td dir="ltr" style="text-align:left; font-size:12px;"><?php echo esc_html($server_health['server_software']); ?></td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            </section>
-        </main>
-
-        <?php \Mediasanat\PA\Core\SafetyEngine::render_backup_warning_modal(); ?>
+                <section id="tab-academy" class="tab-pane"><div class="ms-section-head"><div><span class="eyebrow">راهنمای ساده</span><h2>از کجا شروع کنم؟</h2><p>این مسیر برای مدیرانی است که دانش فنی ندارند.</p></div></div><div class="ms-learning-path"><article><span>۱</span><div><h3>یک اسکن تازه اجرا کنید</h3><p>در «نمای کلی» روی اسکن دوباره بزنید. ابزار صفحه اصلی، کدهای آن و فایل‌های محلی را بررسی می‌کند.</p></div></article><article><span>۲</span><div><h3>نوع دامنه را تشخیص دهید</h3><p>«اشاره URL در کد» الزاماً مشکل سرعت نیست. ابتدا فونت، اسکریپت، استایل، تصویر و تماس سروری را رفع کنید.</p></div></article><article><span>۳</span><div><h3>منابع واقعی را محلی کنید</h3><p>با رعایت مجوز، فایل خارجی را روی هاست ایران قرار دهید و سپس سایت را دوباره اسکن کنید.</p></div></article><article><span>۴</span><div><h3>حالت تاب‌آوری را آزمایشی فعال کنید</h3><p>ابتدا در زمان کم‌ترافیک فعال کنید و پرداخت، پیامک، نقشه و ورود اجتماعی را حتماً تست کنید.</p></div></article></div><div class="ms-panel ms-glossary"><div class="ms-panel-head"><h3>واژه‌نامه کوتاه</h3></div><dl><div><dt>منبع اجرایی</dt><dd>فایلی مانند فونت، CSS یا JavaScript که مرورگر واقعاً برای نمایش صفحه نیاز دارد.</dd></div><div><dt>اشاره URL</dt><dd>آدرسی موجود در HTML یا تنظیمات اسکریپت؛ ممکن است فقط لینک باشد و هیچ درخواستی ایجاد نکند.</dd></div><div><dt>تماس سروری</dt><dd>درخواستی که خود وردپرس از طریق HTTP API به یک دامنه دیگر می‌فرستد.</dd></div><div><dt>حالت تاب‌آوری</dt><dd>توقف موقت ارتباطات خارجی برای جلوگیری از انتظار طولانی هنگام اختلال شبکه.</dd></div></dl></div></section>
+            </main>
+        </div>
+        <div id="ms-toast" class="ms-toast" role="status" aria-live="polite"></div>
     </div>
 </div>

@@ -22,9 +22,12 @@ class ServerScanner {
             'is_https'         => $this->is_https(),
             'wp_version'       => get_bloginfo('version'),
             'wp_debug'         => defined('WP_DEBUG') && WP_DEBUG,
-            'db_version'       => $this->get_db_version(),
             'disk_free'        => $this->get_disk_free_space(),
             'server_software'  => isset($_SERVER['SERVER_SOFTWARE']) ? sanitize_text_field($_SERVER['SERVER_SOFTWARE']) : 'نامشخص',
+            'active_plugins'   => $this->get_active_plugins_count(),
+            'cron_events'      => $this->get_cron_events_count(),
+            'page_cache'       => defined( 'WP_CACHE' ) && WP_CACHE,
+            'object_cache'     => wp_using_ext_object_cache(),
         ];
     }
 
@@ -40,11 +43,6 @@ class ServerScanner {
         return ( is_ssl() || strpos( home_url(), 'https://' ) === 0 );
     }
 
-    private function get_db_version() {
-        global $wpdb;
-        return $wpdb->get_var( "SELECT VERSION()" );
-    }
-
     private function get_disk_free_space() {
         if ( function_exists('disk_free_space') ) {
             $bytes = @disk_free_space( ABSPATH );
@@ -53,5 +51,19 @@ class ServerScanner {
             }
         }
         return 'نامشخص';
+    }
+
+    private function get_active_plugins_count() {
+        $plugins = (array) get_option( 'active_plugins', [] );
+        if ( is_multisite() ) $plugins = array_unique( array_merge( $plugins, array_keys( (array) get_site_option( 'active_sitewide_plugins', [] ) ) ) );
+        return count( $plugins );
+    }
+
+    private function get_cron_events_count() {
+        $cron = _get_cron_array();
+        if ( ! is_array( $cron ) ) return 0;
+        $count = 0;
+        foreach ( $cron as $hooks ) foreach ( $hooks as $events ) $count += count( $events );
+        return $count;
     }
 }

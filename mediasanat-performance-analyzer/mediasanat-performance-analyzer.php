@@ -1,16 +1,20 @@
 <?php
 /**
- * Plugin Name: Mediasanat Performance Analyzer
- * Plugin URI:  https://mediasanat.com
- * Description: افزونه پیشرفته و سازمانی بررسی عملکرد و سلامت سرور وردپرس. دارای موتور تحلیل دیتابیس، بررسی المنتور و راهکارهای هوشمند.
- * Version:     1.0.0
+ * Plugin Name: Mostech Resilience Monitor
+ * Plugin URI:  https://mostech.ir/
+ * Description: تحلیل محلی سرعت و وابستگی‌های خارجی وردپرس با حالت تاب‌آوری ویژه اختلال اینترنت بین‌الملل.
+ * Version:     1.2.0
  * Author:      hoseinmos
- * Text Domain: mediasanat-performance
+ * Author URI:  https://mostech.ir/
+ * Text Domain: mostech-resilience-monitor
+ * Requires at least: 5.5
+ * Requires PHP: 7.4
+ * License: GPL-2.0-or-later
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit; // جلوگیری از دسترسی مستقیم
 
-define( 'MEDIASANAT_PA_VERSION', '1.0.0' );
+define( 'MEDIASANAT_PA_VERSION', '1.2.0' );
 define( 'MEDIASANAT_PA_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MEDIASANAT_PA_URL', plugin_dir_url( __FILE__ ) );
 define( 'MEDIASANAT_PA_MIN_PHP', '7.4' );
@@ -30,10 +34,10 @@ function mediasanat_pa_check_compatibility() {
 }
 
 function mediasanat_pa_php_notice() {
-    echo '<div class="notice notice-error is-dismissible"><p>افزونه <strong>تحلیل‌گر عملکرد مدیاصنعت</strong> نیازمند PHP نسخه ' . MEDIASANAT_PA_MIN_PHP . ' یا بالاتر است.</p></div>';
+    echo '<div class="notice notice-error is-dismissible"><p>افزونه <strong>پایشگر تاب‌آوری موستک</strong> نیازمند PHP نسخه ' . MEDIASANAT_PA_MIN_PHP . ' یا بالاتر است.</p></div>';
 }
 function mediasanat_pa_wp_notice() {
-    echo '<div class="notice notice-error is-dismissible"><p>افزونه <strong>تحلیل‌گر عملکرد مدیاصنعت</strong> نیازمند وردپرس نسخه ' . MEDIASANAT_PA_MIN_WP . ' یا بالاتر است.</p></div>';
+    echo '<div class="notice notice-error is-dismissible"><p>افزونه <strong>پایشگر تاب‌آوری موستک</strong> نیازمند وردپرس نسخه ' . MEDIASANAT_PA_MIN_WP . ' یا بالاتر است.</p></div>';
 }
 
 // 2. راه‌اندازی سیستم در صورت موفقیت
@@ -42,7 +46,20 @@ if ( mediasanat_pa_check_compatibility() ) {
     \Mediasanat\PA\Autoloader::register();
 
     add_action( 'plugins_loaded', function() {
+        load_plugin_textdomain( 'mostech-resilience-monitor', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+        if ( get_option( 'ms_pa_version' ) !== MEDIASANAT_PA_VERSION ) {
+            delete_transient( 'ms_homepage_stats' );
+            delete_transient( 'ms_pa_heavy_images' );
+            update_option( 'ms_pa_version', MEDIASANAT_PA_VERSION, false );
+        }
         $dashboard = new \Mediasanat\PA\Admin\Dashboard();
         $dashboard->init();
     });
 }
+
+register_activation_hook( __FILE__, function() {
+    add_option( 'ms_resilience_mode', false, '', false );
+    add_option( 'ms_blocked_domains', [], '', false );
+    add_option( 'ms_resilience_allowlist', [], '', false );
+    add_option( 'ms_pa_version', MEDIASANAT_PA_VERSION, '', false );
+} );

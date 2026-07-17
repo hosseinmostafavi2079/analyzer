@@ -1,218 +1,105 @@
-jQuery(document).ready(function($) {
-    let currentAction = '';
+(function () {
+    'use strict';
 
-    // منطق تب‌ها (Tab Switching)
-    $('.nav-tabs li').on('click', function() {
-        // حذف کلاس فعال از تمام تب‌ها
-        $('.nav-tabs li').removeClass('active');
-        $('.tab-pane').removeClass('active');
-        
-        // اضافه کردن کلاس فعال به تب کلیک شده
-        $(this).addClass('active');
-        
-        // نمایش محتوای مربوطه
-        let target = $(this).data('tab');
-        $('#tab-' + target).addClass('active');
-    });
+    function qs(selector, context) { return (context || document).querySelector(selector); }
+    function qsa(selector, context) { return Array.prototype.slice.call((context || document).querySelectorAll(selector)); }
 
-    // باز کردن مودال تاییدیه پاکسازی ترانزینت‌ها
-    $('.btn-glass[data-action="ms_clear_transients"]').on('click', function(e) {
-        e.preventDefault();
-        currentAction = $(this).data('action');
-        let message = $(this).data('msg');
-        
-        $('#ms-modal-message').text(message);
-        $('#ms-safety-modal').fadeIn(200).css('display', 'flex');
-    });
+    function toast(message, type) {
+        var el = qs('#ms-toast');
+        if (!el) return;
+        el.textContent = message;
+        el.className = 'ms-toast show ' + (type || 'success');
+        window.setTimeout(function () { el.className = 'ms-toast'; }, 4200);
+    }
 
-    // بستن مودال
-    $('#ms-modal-cancel').on('click', function() {
-        $('#ms-safety-modal').fadeOut(200);
-        currentAction = '';
-    });
+    function post(action, data) {
+        var payload = new URLSearchParams(Object.assign({ action: action, security: msPaConfig.nonce }, data || {}));
+        return fetch(msPaConfig.ajax_url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: payload.toString()
+        }).then(function (response) {
+            if (!response.ok) throw new Error('پاسخ نامعتبر سرور');
+            return response.json();
+        }).then(function (response) {
+            if (!response.success) throw new Error(typeof response.data === 'string' ? response.data : 'عملیات انجام نشد');
+            return response.data;
+        });
+    }
 
-    // اجرای عملیات امن (مانند پاکسازی ترانزینت)
-    $('#ms-modal-confirm').on('click', function() {
-        if (!currentAction) return;
+    function postForm(action, data) {
+        var form = new FormData();
+        form.append('action', action);
+        form.append('security', msPaConfig.nonce);
+        Object.keys(data || {}).forEach(function (key) { form.append(key, data[key]); });
+        return fetch(msPaConfig.ajax_url, { method: 'POST', credentials: 'same-origin', body: form })
+            .then(function (response) { if (!response.ok) throw new Error('پاسخ نامعتبر سرور'); return response.json(); })
+            .then(function (response) { if (!response.success) throw new Error(typeof response.data === 'string' ? response.data : 'عملیات انجام نشد'); return response.data; });
+    }
 
-        let $btn = $(this);
-        let originalText = $btn.text();
-        $btn.text('در حال پردازش...').prop('disabled', true);
+    function browserScan() {
+        var url = new URL(msPaConfig.home_url, window.location.href);
+        url.searchParams.set('ms_pa_scan', String(Date.now()));
+        url.searchParams.set('_ms_nonce', msPaConfig.scan_nonce);
+        var started = performance.now();
+        return fetch(url.toString(), { credentials: 'same-origin', cache: 'no-store' }).then(function (response) {
+            if (!response.ok) throw new Error('صفحه اصلی کد ' + response.status + ' برگرداند');
+            var duration = Math.max(0.01, (performance.now() - started) / 1000);
+            return response.text().then(function (html) {
+                if (html.length > 5 * 1024 * 1024) throw new Error('حجم HTML بیشتر از سقف ۵ مگابایت است');
+                return postForm('ms_analyze_browser_html', { html: html, duration: duration.toFixed(3) });
+            });
+        });
+    }
 
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: currentAction,
-                security: msPaConfig.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    alert(response.data);
-                    location.reload(); 
-                } else {
-                    alert('خطا: ' + response.data);
-                    $btn.text(originalText).prop('disabled', false);
-                }
-            },
-            error: function() {
-                alert('خطای ارتباط با سرور.');
-                $btn.text(originalText).prop('disabled', false);
-            }
+    function openTab(name) {
+        qsa('.ms-nav button').forEach(function (button) { button.classList.toggle('active', button.dataset.tab === name); });
+        qsa('.tab-pane').forEach(function (pane) { pane.classList.toggle('active', pane.id === 'tab-' + name); });
+        if (window.history && history.replaceState) history.replaceState(null, '', '#'+ name);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    qsa('.ms-nav button').forEach(function (button) { button.addEventListener('click', function () { openTab(button.dataset.tab); }); });
+    qsa('[data-open-tab]').forEach(function (button) { button.addEventListener('click', function () { openTab(button.dataset.openTab); }); });
+    if (window.location.hash && qs('[data-tab="' + window.location.hash.slice(1) + '"]')) openTab(window.location.hash.slice(1));
+
+    qsa('.ms-network-action').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var type = button.dataset.type;
+            var message = type === 'block' ? 'تماس‌های سروری با «' + button.dataset.domain + '» مسدود شود؟ ممکن است بخشی از سایت از کار بیفتد.' : 'این دامنه دوباره آزاد شود؟';
+            if (!window.confirm(message)) return;
+            button.disabled = true;
+            post('ms_toggle_domain_block', { domain: button.dataset.domain, type: type }).then(function (result) { toast(result); window.setTimeout(function () { location.reload(); }, 700); })
+                .catch(function (error) { toast(error.message, 'danger'); button.disabled = false; });
         });
     });
 
-    // عملیات مسدود/آزاد سازی دامنه‌های شبکه
-    $('.ms-network-action').on('click', function(e) {
-        e.preventDefault();
-        let $btn = $(this);
-        let domain = $btn.data('domain');
-        let type = $btn.data('type');
-        
-        let confirmMsg = type === 'block' 
-            ? 'آیا از مسدود کردن ارتباط وردپرس با دامنه [' + domain + '] مطمئن هستید؟ (این کار از هدر رفتن زمان برای سایت‌های فیلترشده جلوگیری می‌کند)' 
-            : 'آیا از آزادسازی ارتباط با دامنه [' + domain + '] مطمئن هستید؟';
-        
-        if(!confirm(confirmMsg)) return;
-
-        let originalText = $btn.text();
-        $btn.text('...').prop('disabled', true);
-
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'ms_toggle_domain_block',
-                security: msPaConfig.nonce,
-                domain: domain,
-                type: type
-            },
-            success: function(response) {
-                if (response.success) {
-                    alert(response.data);
-                    location.reload(); 
-                } else {
-                    alert('خطا: ' + response.data);
-                    $btn.text(originalText).prop('disabled', false);
-                }
-            },
-            error: function() {
-                alert('خطای ارتباط با سرور.');
-                $btn.text(originalText).prop('disabled', false);
-            }
-        });
+    var resilience = qs('#ms-resilience-toggle');
+    if (resilience) resilience.addEventListener('change', function () {
+        var enabled = resilience.checked;
+        if (enabled && !window.confirm('حالت تاب‌آوری می‌تواند APIهای پرداخت، پیامک، نقشه و سرویس‌های خارجی را متوقف کند. فعال شود؟')) { resilience.checked = false; return; }
+        resilience.disabled = true;
+        post('ms_toggle_resilience', { enabled: enabled ? '1' : '0' }).then(function (result) { toast(result); window.setTimeout(function () { location.reload(); }, 900); })
+            .catch(function (error) { toast(error.message, 'danger'); resilience.checked = !enabled; resilience.disabled = false; });
     });
 
-    // === کدهای مربوط به بکاپ ===
-
-    // ایجاد بکاپ جدید
-    $('.ms-create-backup-btn').on('click', function(e) {
-        e.preventDefault();
-        let $btn = $(this);
-        let originalText = $btn.html();
-        
-        $btn.html('⏳ در حال پردازش و استخراج دیتابیس... (لطفاً منتظر بمانید)').prop('disabled', true).css('opacity', '0.7');
-
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'ms_create_backup',
-                security: msPaConfig.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    alert('✅ ' + response.data);
-                    location.reload(); 
-                } else {
-                    alert('❌ خطا: ' + response.data);
-                    $btn.html(originalText).prop('disabled', false).css('opacity', '1');
-                }
-            },
-            error: function() {
-                alert('خطای سرور در تهیه بکاپ.');
-                $btn.html(originalText).prop('disabled', false).css('opacity', '1');
-            }
-        });
-    });
-
-    // حذف بکاپ
-    $('.ms-delete-backup-btn').on('click', function(e) {
-        e.preventDefault();
-        let $btn = $(this);
-        let filename = $btn.data('file');
-        
-        if(!confirm('آیا از حذف بکاپ [' + filename + '] مطمئن هستید؟ این عملیات غیرقابل بازگشت است.')) return;
-
-        $btn.text('در حال حذف...').prop('disabled', true);
-
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'ms_delete_backup',
-                security: msPaConfig.nonce,
-                filename: filename
-            },
-            success: function(response) {
-                if (response.success) {
-                    $btn.closest('tr').fadeOut(300, function() { $(this).remove(); });
-                } else {
-                    alert('❌ خطا: ' + response.data);
-                    $btn.text('🗑️ حذف').prop('disabled', false);
-                }
-            }
-        });
-    });
-
-    // پاک کردن لیست لاگ ارتباطات شبکه
-    $('.ms-clear-logs-btn').on('click', function(e) {
-        e.preventDefault();
-        if(!confirm('آیا لیست ارتباطات پاک شود؟ (دامنه‌های مسدودشده حذف نمی‌شوند، فقط تاریخچه پاک می‌شود)')) return;
-
-        let $btn = $(this);
-        $btn.text('در حال پاکسازی...').prop('disabled', true);
-
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'ms_clear_network_logs',
-                security: msPaConfig.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    alert(response.data);
+    qsa('.ms-clear-logs-btn').forEach(function (button) { button.addEventListener('click', function () { if (!window.confirm('تاریخچه تماس‌های شبکه پاک شود؟')) return; button.disabled = true; post('ms_clear_network_logs').then(function (result) { toast(result); window.setTimeout(function () { location.reload(); }, 700); }).catch(function (error) { toast(error.message, 'danger'); button.disabled = false; }); }); });
+    qsa('.ms-retest-btn').forEach(function (button) {
+        button.addEventListener('click', function () {
+            button.disabled = true;
+            button.textContent = 'در حال اسکن مرورگر…';
+            browserScan().then(function () { location.reload(); }).catch(function () {
+                button.textContent = 'در حال اسکن سرور…';
+                return post('ms_retest_speed').then(function (stats) {
+                    if (!stats || stats.status !== 'success') throw new Error((stats && stats.message) || 'اسکن سرور هم انجام نشد');
                     location.reload();
-                } else {
-                    alert('خطا: ' + response.data);
-                    $btn.text('🔄 پاک کردن لیست و شروع نظارت مجدد').prop('disabled', false);
-                }
-            },
-            error: function() {
-                alert('خطای ارتباط با سرور.');
-                $btn.text('🔄 پاک کردن لیست و شروع نظارت مجدد').prop('disabled', false);
-            }
+                });
+            }).catch(function (error) {
+                toast(error.message, 'danger');
+                button.disabled = false;
+                button.textContent = 'اسکن دوباره';
+            });
         });
     });
-
-    // تست مجدد سرعت
-    $('.ms-retest-btn').on('click', function(e) {
-        e.preventDefault();
-        let $btn = $(this);
-        $btn.text('⏳ در حال تست مجدد سرعت... (چند ثانیه صبر کنید)').prop('disabled', true);
-        $.ajax({
-            url: msPaConfig.ajax_url,
-            type: 'POST',
-            data: { action: 'ms_retest_speed', security: msPaConfig.nonce },
-            success: function(response) {
-                location.reload();
-            },
-            error: function() {
-                alert('خطای ارتباط با سرور.');
-                $btn.text('🔄 تست مجدد سرعت').prop('disabled', false);
-            }
-        });
-    });
-
-});
+}());
