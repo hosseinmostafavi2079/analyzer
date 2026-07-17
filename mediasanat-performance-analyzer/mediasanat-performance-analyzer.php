@@ -3,7 +3,7 @@
  * Plugin Name: Mostech Resilience Monitor
  * Plugin URI:  https://mostech.ir/
  * Description: پایش و مدیریت امن وابستگی‌های خارجی وردپرس؛ بدون قابلیت کش، Minify یا Telemetry.
- * Version:     1.3.0
+ * Version:     1.4.0
  * Author:      hoseinmos
  * Author URI:  https://mostech.ir/
  * Text Domain: mostech-resilience-monitor
@@ -14,7 +14,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit; // جلوگیری از دسترسی مستقیم
 
-define( 'MEDIASANAT_PA_VERSION', '1.3.0' );
+define( 'MEDIASANAT_PA_VERSION', '1.4.0' );
 define( 'MEDIASANAT_PA_PATH', plugin_dir_path( __FILE__ ) );
 define( 'MEDIASANAT_PA_URL', plugin_dir_url( __FILE__ ) );
 define( 'MEDIASANAT_PA_MIN_PHP', '7.4' );

@@ -91,6 +91,7 @@ class AssetAnalyzer {
             'code'          => $code,
             'score'         => $score,
             'scan_source'   => $source,
+            'scanned_at'    => time(),
         ];
     }
 

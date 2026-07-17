@@ -84,10 +84,29 @@ class Dashboard {
             $rule = $policy->get_rule( $item['domain'] );
             $category = $rule['category'] ?? $policy->auto_category( $item['domain'], $item['types'] ?? [] );
             $category_data = $policy->get_category_data( $category );
+            $evaluation = $policy->evaluate( $item['domain'] );
             $item['category'] = $category;
             $item['category_label'] = $category_data['label'];
             $item['impact'] = $category_data['impact'];
+            $item['warning'] = $category_data['warning'] ?? '';
+            $item['category_auto'] = ! $rule;
             $item['rule_list'] = $rule['list'] ?? '';
+            $item['rule_label'] = ! $rule ? 'بدون قانون' : ( 'allow' === $rule['list'] ? 'Allowlist — مجاز' : 'Blocklist — قابل قطع در حالت اجرایی' );
+            $item['decision'] = $evaluation['decision'];
+            if ( 'allow' === $evaluation['decision'] ) {
+                $item['decision_label'] = 'آزاد — به‌دلیل Allowlist';
+            } elseif ( 'would_block' === $evaluation['decision'] ) {
+                $item['decision_label'] = 'در شبیه‌سازی قابل قطع';
+            } elseif ( 'block' === $evaluation['decision'] ) {
+                $item['decision_label'] = 'طبق سیاست واقعاً مسدود';
+            } elseif ( $rule && 'block' === $rule['list'] ) {
+                $item['decision_label'] = 'تحت پایش — Blocklist فعلاً قطع نمی‌شود';
+            } else {
+                $item['decision_label'] = 'تحت پایش — آزاد';
+            }
+            $type_labels = [ 'اسکریپت' => 'JavaScript', 'استایل' => 'CSS', 'اشاره URL در کد' => 'اشاره در HTML', 'فایل Frontend' => 'CSS یا JavaScript', 'تماس سروری' => 'تماس سروری' ];
+            $item['observation_types'] = array_values( array_unique( array_map( function( $type ) use ( $type_labels ) { return $type_labels[ $type ] ?? $type; }, (array) ( $item['types'] ?? [] ) ) ) );
+            if ( empty( $item['last_seen'] ) ) $item['last_seen'] = (int) ( $homepage_stats['scanned_at'] ?? 0 );
         }
         unset( $item );
 
@@ -182,6 +201,7 @@ class Dashboard {
             $inventory[ $domain ]['types'][] = 'frontend' === ( $log['channel'] ?? '' ) ? 'فایل Frontend' : 'تماس سروری';
             $inventory[ $domain ]['types'] = array_values( array_unique( $inventory[ $domain ]['types'] ) );
             $inventory[ $domain ]['count'] += max( 1, (int) ( $log['count'] ?? 1 ) );
+            $inventory[ $domain ]['last_seen'] = max( (int) ( $inventory[ $domain ]['last_seen'] ?? 0 ), (int) ( $log['last_seen'] ?? 0 ) );
             if ( ! empty( $log['origin'] ) && count( $inventory[ $domain ]['samples'] ) < 2 ) $inventory[ $domain ]['samples'][] = $log['origin'];
         }
         uasort( $inventory, function( $a, $b ) { return $b['count'] <=> $a['count']; } );

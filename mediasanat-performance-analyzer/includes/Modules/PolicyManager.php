@@ -153,14 +153,16 @@ class PolicyManager {
 
     public function get_categories() {
         return [
-            'payment'   => [ 'label' => 'پرداخت', 'impact' => 'قطع این دامنه می‌تواند پرداخت، بازگشت از درگاه یا تأیید تراکنش را مختل کند.' ],
-            'sms'       => [ 'label' => 'پیامک', 'impact' => 'قطع این دامنه می‌تواند ارسال کد ورود، اعلان یا پیامک سفارش را متوقف کند.' ],
-            'font'      => [ 'label' => 'فونت', 'impact' => 'قطع این دامنه ممکن است باعث تأخیر یا نمایش فونت جایگزین شود.' ],
-            'cdn'       => [ 'label' => 'CDN', 'impact' => 'قطع این دامنه ممکن است فایل‌های CSS، JavaScript یا تصویر را از دسترس خارج کند.' ],
-            'map'       => [ 'label' => 'نقشه', 'impact' => 'قطع این دامنه می‌تواند نقشه، انتخاب موقعیت یا محاسبه مسیر را غیرفعال کند.' ],
-            'analytics' => [ 'label' => 'آمار', 'impact' => 'قطع این دامنه معمولاً ثبت آمار و رفتار کاربر را متوقف می‌کند، نه عملکرد اصلی سایت را.' ],
-            'license'   => [ 'label' => 'لایسنس', 'impact' => 'قطع این دامنه می‌تواند بررسی لایسنس، به‌روزرسانی یا دریافت اطلاعات محصول را متوقف کند.' ],
-            'unknown'   => [ 'label' => 'ناشناخته', 'impact' => 'اثر قطع این دامنه مشخص نیست؛ قبل از مسدودسازی در حالت شبیه‌سازی بررسی شود.' ],
+            'payment'   => [ 'label' => 'پرداخت', 'impact' => 'قطع این دامنه می‌تواند پرداخت، بازگشت از درگاه یا تأیید تراکنش را مختل کند.', 'warning' => 'پیش از Blocklist، خرید و بازگشت از درگاه را روی سایت آزمایشی تست کنید.' ],
+            'sms'       => [ 'label' => 'پیامک', 'impact' => 'قطع این دامنه می‌تواند ارسال کد ورود، اعلان یا پیامک سفارش را متوقف کند.', 'warning' => 'ارسال کد ورود و پیامک سفارش را قبل از مسدودسازی تست کنید.' ],
+            'login'     => [ 'label' => 'ورود', 'impact' => 'قطع این دامنه ممکن است ورود اجتماعی، ورود یک‌بارمصرف یا احراز هویت را متوقف کند.', 'warning' => 'صفحه ورود و بازیابی دسترسی مدیر را در یک تب جدا آزمایش کنید.' ],
+            'captcha'   => [ 'label' => 'کپچا', 'impact' => 'قطع این دامنه می‌تواند اعتبارسنجی ضدربات فرم ورود، تماس یا خرید را از کار بیندازد.', 'warning' => 'تمام فرم‌های دارای کپچا را قبل از Blocklist ارسال و بررسی کنید.' ],
+            'font'      => [ 'label' => 'فونت', 'impact' => 'قطع این دامنه ممکن است باعث تأخیر یا نمایش فونت جایگزین شود.', 'warning' => '' ],
+            'cdn'       => [ 'label' => 'CDN', 'impact' => 'قطع این دامنه ممکن است فایل‌های CSS، JavaScript یا تصویر را از دسترس خارج کند.', 'warning' => '' ],
+            'map'       => [ 'label' => 'نقشه', 'impact' => 'قطع این دامنه می‌تواند نقشه، انتخاب موقعیت یا محاسبه مسیر را غیرفعال کند.', 'warning' => '' ],
+            'analytics' => [ 'label' => 'آمار', 'impact' => 'قطع این دامنه معمولاً ثبت آمار و رفتار کاربر را متوقف می‌کند، نه عملکرد اصلی سایت را.', 'warning' => '' ],
+            'license'   => [ 'label' => 'لایسنس', 'impact' => 'قطع این دامنه می‌تواند بررسی لایسنس، به‌روزرسانی یا دریافت اطلاعات محصول را متوقف کند.', 'warning' => 'به‌روزرسانی و اعتبار لایسنس قالب یا افزونه را پس از شبیه‌سازی بررسی کنید.' ],
+            'unknown'   => [ 'label' => 'ناشناخته', 'impact' => 'اثر قطع این دامنه مشخص نیست؛ قبل از مسدودسازی در حالت شبیه‌سازی بررسی شود.', 'warning' => 'تا زمانی که کاربرد دامنه مشخص نشده، آن را وارد Blocklist نکنید.' ],
         ];
     }
 
@@ -169,6 +171,8 @@ class PolicyManager {
         $patterns = [
             'payment'   => 'pay|payment|zarinpal|idpay|behpardakht|sadad|asanpardakht|پرداخت',
             'sms'       => 'sms|kavenegar|melipayamak|ippanel|faraz|پیامک',
+            'login'     => 'login|auth|oauth|openid|ورود|احراز',
+            'captcha'   => 'captcha|recaptcha|hcaptcha|turnstile|کپچا',
             'font'      => 'font|typekit|gstatic|googleapis|فونت',
             'cdn'       => 'cdn|cloudflare|jsdelivr|unpkg|cdnjs',
             'map'       => 'map|neshan|balad|mapbox|نقشه',
@@ -189,8 +193,10 @@ class PolicyManager {
     }
 
     private function get_internal_domains() {
-        $urls = [ home_url( '/' ), site_url( '/' ), admin_url( '/' ) ];
+        $urls = [ home_url( '/' ), site_url( '/' ), admin_url( '/' ), admin_url( 'admin-ajax.php' ), site_url( 'wp-cron.php' ), home_url( 'wp-json/' ) ];
         if ( function_exists( 'network_home_url' ) ) $urls[] = network_home_url( '/' );
+        if ( function_exists( 'network_admin_url' ) ) $urls[] = network_admin_url( '/' );
+        if ( function_exists( 'rest_url' ) ) $urls[] = rest_url( '/' );
         $domains = [];
         foreach ( $urls as $url ) {
             $host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );

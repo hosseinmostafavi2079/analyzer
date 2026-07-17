@@ -45,7 +45,7 @@ class NetworkMonitor {
 
         return new \WP_Error(
             'mostech_resilience_blocked',
-            sprintf( 'ارتباط با دامنه %s طبق Blocklist مدیر مسدود شد.', $evaluation['host'] )
+            'این ارتباط خارجی طبق سیاست موقت سایت در دسترس نیست.'
         );
     }
 

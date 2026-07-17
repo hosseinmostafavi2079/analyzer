@@ -4,7 +4,7 @@ Tags: performance, resilience, external dependencies, iran, monitoring
 Requires at least: 5.5
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 
 Local WordPress performance and external-dependency analysis designed for unstable international connectivity.
@@ -19,6 +19,7 @@ Core features:
 * Never download detected external resources during a scan.
 * Three explicit modes: monitor, simulate, and time-limited enforcement.
 * Per-domain Allowlist and Blocklist with categories and impact guidance.
+* Complete domain cards with observation source, current rule and decision, last seen time, count, impact and sensitive-service warnings.
 * Monitor outbound WordPress HTTP API calls and enqueued external assets in aggregated 12-hour logs.
 * Block only manager-selected Blocklist domains during confirmed enforcement trials.
 * Analyze response time, locally measurable page weight, request count and large images in uploads and active themes.
@@ -48,6 +49,15 @@ To stop enforcement immediately, add this to `wp-config.php`:
 `define( 'MOSTECH_RESILIENCE_EMERGENCY_OFF', true );`
 
 == Changelog ==
+
+= 1.4.0 =
+* Hardened monitor, simulation and enforcement decision boundaries and replaced public block details with a generic message.
+* Expanded protection for site, network-admin, REST, AJAX, cron and loopback destinations.
+* Added login and captcha categories plus explicit warnings for payment, SMS, login, captcha, license and unknown services.
+* Completed domain cards with observation type, rule, current decision, impact, last seen time and aggregate count.
+* Added the required automatic-category accuracy notice and manual correction guidance.
+* Rebuilt the Persian RTL academy as a ten-section beginner guide with examples, checklists, emergency recovery and glossary.
+* Added scan timestamps while preserving manager-triggered cached analysis.
 
 = 1.3.0 =
 * Added monitor, simulation and confirmed time-limited enforcement modes.
