@@ -20,6 +20,7 @@ class Dashboard {
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
         add_action( 'wp_ajax_ms_toggle_domain_block', [ $this, 'ajax_toggle_domain_block' ] );
         add_action( 'wp_ajax_ms_save_domain_rule', [ $this, 'ajax_save_domain_rule' ] );
+        add_action( 'wp_ajax_ms_save_domain_category', [ $this, 'ajax_save_domain_category' ] );
         add_action( 'wp_ajax_ms_delete_domain_rule', [ $this, 'ajax_delete_domain_rule' ] );
         add_action( 'wp_ajax_ms_set_operation_mode', [ $this, 'ajax_set_operation_mode' ] );
         add_action( 'wp_ajax_ms_clear_network_logs', [ $this, 'ajax_clear_network_logs' ] );
@@ -29,7 +30,7 @@ class Dashboard {
     }
 
     public function add_menu_page() {
-        add_menu_page( 'پایشگر تاب‌آوری موستک', 'تاب‌آوری سایت', 'manage_options', 'mediasanat-performance', [ $this, 'render_view' ], 'dashicons-shield-alt', 80 );
+        add_menu_page( 'DepGuard – WordPress Dependency Monitor', 'DepGuard', 'manage_options', 'mediasanat-performance', [ $this, 'render_view' ], 'dashicons-shield-alt', 80 );
     }
 
     public function enqueue_assets() {
@@ -49,7 +50,7 @@ class Dashboard {
     }
 
     public function render_view() {
-        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'شما اجازه دسترسی به این بخش را ندارید.', 'mostech-resilience-monitor' ) );
+        if ( ! current_user_can( 'manage_options' ) ) wp_die( esc_html__( 'شما اجازه دسترسی به این بخش را ندارید.', 'depguard' ) );
         $server = new ServerScanner();
         $engine = new SolutionsEngine();
         $policy = new PolicyManager();
@@ -82,16 +83,17 @@ class Dashboard {
 
         foreach ( $external_assets as &$item ) {
             $rule = $policy->get_rule( $item['domain'] );
-            $category = $rule['category'] ?? $policy->auto_category( $item['domain'], $item['types'] ?? [] );
+            $manual_category = $rule['category'] ?? $policy->get_manual_category( $item['domain'] );
+            $category = $manual_category ?: $policy->auto_category( $item['domain'], $item['types'] ?? [] );
             $category_data = $policy->get_category_data( $category );
             $evaluation = $policy->evaluate( $item['domain'] );
             $item['category'] = $category;
             $item['category_label'] = $category_data['label'];
             $item['impact'] = $category_data['impact'];
             $item['warning'] = $category_data['warning'] ?? '';
-            $item['category_auto'] = ! $rule;
+            $item['category_auto'] = ! $manual_category;
             $item['rule_list'] = $rule['list'] ?? '';
-            $item['rule_label'] = ! $rule ? 'بدون قانون' : ( 'allow' === $rule['list'] ? 'Allowlist — مجاز' : 'Blocklist — قابل قطع در حالت اجرایی' );
+            $item['rule_label'] = ! $rule ? 'بدون قانون' : ( 'allow' === $rule['list'] ? 'فهرست مجاز (Allowlist)' : 'فهرست مسدود (Blocklist)' );
             $item['decision'] = $evaluation['decision'];
             if ( 'allow' === $evaluation['decision'] ) {
                 $item['decision_label'] = 'آزاد — به‌دلیل Allowlist';
@@ -107,8 +109,21 @@ class Dashboard {
             $type_labels = [ 'اسکریپت' => 'JavaScript', 'استایل' => 'CSS', 'اشاره URL در کد' => 'اشاره در HTML', 'فایل Frontend' => 'CSS یا JavaScript', 'تماس سروری' => 'تماس سروری' ];
             $item['observation_types'] = array_values( array_unique( array_map( function( $type ) use ( $type_labels ) { return $type_labels[ $type ] ?? $type; }, (array) ( $item['types'] ?? [] ) ) ) );
             if ( empty( $item['last_seen'] ) ) $item['last_seen'] = (int) ( $homepage_stats['scanned_at'] ?? 0 );
+            $item['response_status'] = $item['response_status'] ?? 'ثبت HTML';
+            $item['response_time'] = isset( $item['response_time'] ) ? (float) $item['response_time'] : null;
+            $item['is_error'] = ! empty( $item['is_error'] );
+            $item['is_slow'] = null !== $item['response_time'] && $item['response_time'] >= 1.5;
+            $item['is_critical'] = in_array( $category, [ 'payment', 'sms', 'login', 'captcha', 'license', 'update', 'unknown' ], true );
+            $item['is_fresh'] = ! empty( $item['last_seen'] ) && (int) $item['last_seen'] >= time() - HOUR_IN_SECONDS;
         }
         unset( $item );
+
+        $dependency_summary = [
+            'active'   => count( $external_assets ),
+            'errors'   => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_error'] ); } ) ),
+            'slow'     => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_slow'] ); } ) ),
+            'critical' => count( array_filter( $external_assets, function( $item ) { return ! empty( $item['is_critical'] ); } ) ),
+        ];
 
         $reports = $engine->generate_report( $server_health, $homepage_stats );
         require MEDIASANAT_PA_PATH . 'includes/Admin/Views/dashboard-view.php';
@@ -135,6 +150,15 @@ class Dashboard {
         $result = ( new PolicyManager() )->set_rule( $domain, $list, $category );
         if ( is_wp_error( $result ) ) wp_send_json_error( $result->get_error_message() );
         wp_send_json_success( 'قانون دامنه ذخیره شد.' );
+    }
+
+    public function ajax_save_domain_category() {
+        SafetyEngine::verify_ajax_request( 'ms_pa_safe_action' );
+        $domain = isset( $_POST['domain'] ) ? sanitize_text_field( wp_unslash( $_POST['domain'] ) ) : '';
+        $category = isset( $_POST['category'] ) ? sanitize_key( wp_unslash( $_POST['category'] ) ) : '';
+        $result = ( new PolicyManager() )->set_manual_category( $domain, $category );
+        if ( is_wp_error( $result ) ) wp_send_json_error( $result->get_error_message() );
+        wp_send_json_success( 'دسته‌بندی دستی ذخیره شد و بر تشخیص خودکار اولویت دارد.' );
     }
 
     public function ajax_delete_domain_rule() {
@@ -173,9 +197,11 @@ class Dashboard {
         SafetyEngine::verify_ajax_request( 'ms_pa_safe_action' );
         $html = isset( $_POST['html'] ) ? wp_unslash( $_POST['html'] ) : '';
         if ( ! is_string( $html ) || strlen( $html ) < 100 || strlen( $html ) > 5 * 1024 * 1024 ) wp_send_json_error( 'حجم HTML دریافت‌شده برای تحلیل معتبر نیست.' );
-        $duration = isset( $_POST['duration'] ) ? (float) sanitize_text_field( wp_unslash( $_POST['duration'] ) ) : 0.01;
-        $duration = max( 0.01, min( 60, $duration ) );
-        $stats = ( new AssetAnalyzer() )->analyze_html( $html, $duration, 200, 'browser' );
+        $response_time = isset( $_POST['response_time'] ) ? (float) sanitize_text_field( wp_unslash( $_POST['response_time'] ) ) : 0.01;
+        $load_time = isset( $_POST['load_time'] ) ? (float) sanitize_text_field( wp_unslash( $_POST['load_time'] ) ) : $response_time;
+        $response_time = max( 0.01, min( 60, $response_time ) );
+        $load_time = max( $response_time, min( 60, $load_time ) );
+        $stats = ( new AssetAnalyzer() )->analyze_html( $html, $response_time, 200, 'browser', $load_time );
         set_transient( 'ms_homepage_stats', $stats, 30 * MINUTE_IN_SECONDS );
         wp_send_json_success( $stats );
     }
@@ -202,6 +228,9 @@ class Dashboard {
             $inventory[ $domain ]['types'] = array_values( array_unique( $inventory[ $domain ]['types'] ) );
             $inventory[ $domain ]['count'] += max( 1, (int) ( $log['count'] ?? 1 ) );
             $inventory[ $domain ]['last_seen'] = max( (int) ( $inventory[ $domain ]['last_seen'] ?? 0 ), (int) ( $log['last_seen'] ?? 0 ) );
+            $inventory[ $domain ]['response_status'] = $log['status'] ?? '—';
+            $inventory[ $domain ]['response_time'] = $log['duration'] ?? null;
+            $inventory[ $domain ]['is_error'] = ! empty( $log['is_error'] );
             if ( ! empty( $log['origin'] ) && count( $inventory[ $domain ]['samples'] ) < 2 ) $inventory[ $domain ]['samples'][] = $log['origin'];
         }
         uasort( $inventory, function( $a, $b ) { return $b['count'] <=> $a['count']; } );

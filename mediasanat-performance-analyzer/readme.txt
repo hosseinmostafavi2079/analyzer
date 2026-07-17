@@ -1,13 +1,13 @@
-=== Mostech Resilience Monitor ===
+=== DepGuard – WordPress Dependency Monitor ===
 Contributors: hoseinmos
 Tags: performance, resilience, external dependencies, iran, monitoring
 Requires at least: 5.5
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 
-Local WordPress performance and external-dependency analysis designed for unstable international connectivity.
+Local WordPress dependency monitoring and management designed for unstable international connectivity.
 
 == Description ==
 
@@ -19,17 +19,19 @@ Core features:
 * Never download detected external resources during a scan.
 * Three explicit modes: monitor, simulate, and time-limited enforcement.
 * Per-domain Allowlist and Blocklist with categories and impact guidance.
-* Complete domain cards with observation source, current rule and decision, last seen time, count, impact and sensitive-service warnings.
+* Compact, searchable and paginated dependency table with expandable detail panels.
+* Manual category corrections stored independently from Allowlist and Blocklist policy.
 * Monitor outbound WordPress HTTP API calls and enqueued external assets in aggregated 12-hour logs.
 * Block only manager-selected Blocklist domains during confirmed enforcement trials.
-* Analyze response time, locally measurable page weight, request count and large images in uploads and active themes.
-* Provide prioritized Persian guidance and an in-product beginner academy.
+* Separate HTML response time from total analysis time and avoid scores when scan data is incomplete.
+* Group large WordPress image sizes under their source image with dimensions, paths, filters and pagination.
+* Provide interactive Persian quick-start guidance and an in-product beginner academy.
 
 == Installation ==
 
 1. Upload the plugin folder to `/wp-content/plugins/`.
 2. Activate it from the WordPress plugins screen.
-3. Open «تاب‌آوری سایت» and run a fresh scan.
+3. Open «DepGuard» and run a fresh scan.
 4. Build Allowlist and Blocklist rules, test simulation, then use a short enforcement trial.
 
 == Important limitations ==
@@ -49,6 +51,16 @@ To stop enforcement immediately, add this to `wp-config.php`:
 `define( 'MOSTECH_RESILIENCE_EMERGENCY_OFF', true );`
 
 == Changelog ==
+
+= 1.5.0 =
+* Renamed the displayed product to DepGuard – WordPress Dependency Monitor while retaining legacy folder, file, class, constant and option identifiers for safe upgrades.
+* Added one-time, non-destructive DepGuard migration markers and preserved policy mode, rules and network logs.
+* Separated HTML response, load, processing and total analysis times and suppressed performance scores for incomplete scans.
+* Replaced ambiguous metric labels with measured scope, units and methodology notes.
+* Replaced long dependency cards with a compact searchable, filterable, sortable and paginated table with expandable details.
+* Added independent manual category overrides, automatic-detection labels and high-risk warnings for WordPress updates and sensitive services.
+* Reworked large-image results into grouped originals and generated sizes with thumbnails, dimensions, paths, filters, sorting and pagination.
+* Added an interactive quick-start, three guided paths, checkable safety list and internal navigation to the Persian academy.
 
 = 1.4.0 =
 * Hardened monitor, simulation and enforcement decision boundaries and replaced public block details with a generic message.

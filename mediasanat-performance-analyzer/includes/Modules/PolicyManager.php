@@ -7,6 +7,7 @@ class PolicyManager {
     const OPTION_MODE        = 'ms_pa_operation_mode';
     const OPTION_TRIAL_UNTIL = 'ms_pa_trial_until';
     const OPTION_RULES       = 'ms_pa_domain_rules';
+    const OPTION_CATEGORIES  = 'ms_pa_domain_categories';
     const CRON_HOOK          = 'ms_pa_end_enforcement_trial';
 
     public function __construct() {
@@ -81,6 +82,29 @@ class PolicyManager {
         return $domain && isset( $rules[ $domain ] ) ? $rules[ $domain ] : null;
     }
 
+    public function get_manual_categories() {
+        $categories = get_option( self::OPTION_CATEGORIES, [] );
+        return is_array( $categories ) ? $categories : [];
+    }
+
+    public function get_manual_category( $domain ) {
+        $domain = $this->normalize_domain( $domain );
+        $categories = $this->get_manual_categories();
+        return $domain && isset( $categories[ $domain ] ) ? $categories[ $domain ] : '';
+    }
+
+    public function set_manual_category( $domain, $category ) {
+        $domain = $this->normalize_domain( $domain );
+        $available = $this->get_categories();
+        if ( ! $domain ) return new \WP_Error( 'invalid_domain', 'دامنه واردشده معتبر نیست.' );
+        if ( ! isset( $available[ $category ] ) ) return new \WP_Error( 'invalid_category', 'دسته‌بندی دامنه معتبر نیست.' );
+        $categories = $this->get_manual_categories();
+        $categories[ $domain ] = $category;
+        ksort( $categories );
+        update_option( self::OPTION_CATEGORIES, $categories, false );
+        return $category;
+    }
+
     public function set_rule( $domain, $list, $category ) {
         $domain = $this->normalize_domain( $domain );
         if ( ! $domain ) return new \WP_Error( 'invalid_domain', 'دامنه واردشده معتبر نیست.' );
@@ -99,6 +123,7 @@ class PolicyManager {
         ];
         ksort( $rules );
         update_option( self::OPTION_RULES, $rules, false );
+        $this->set_manual_category( $domain, $category );
         return $rules[ $domain ];
     }
 
@@ -162,6 +187,7 @@ class PolicyManager {
             'map'       => [ 'label' => 'نقشه', 'impact' => 'قطع این دامنه می‌تواند نقشه، انتخاب موقعیت یا محاسبه مسیر را غیرفعال کند.', 'warning' => '' ],
             'analytics' => [ 'label' => 'آمار', 'impact' => 'قطع این دامنه معمولاً ثبت آمار و رفتار کاربر را متوقف می‌کند، نه عملکرد اصلی سایت را.', 'warning' => '' ],
             'license'   => [ 'label' => 'لایسنس', 'impact' => 'قطع این دامنه می‌تواند بررسی لایسنس، به‌روزرسانی یا دریافت اطلاعات محصول را متوقف کند.', 'warning' => 'به‌روزرسانی و اعتبار لایسنس قالب یا افزونه را پس از شبیه‌سازی بررسی کنید.' ],
+            'update'    => [ 'label' => 'به‌روزرسانی وردپرس', 'impact' => 'قطع این دامنه می‌تواند بررسی یا دریافت به‌روزرسانی هسته، قالب و افزونه را متوقف کند.', 'warning' => 'دامنه‌های رسمی وردپرس را خودکار مسدود نکنید؛ دریافت به‌روزرسانی‌ها را روی محیط آزمایشی بررسی کنید.' ],
             'unknown'   => [ 'label' => 'ناشناخته', 'impact' => 'اثر قطع این دامنه مشخص نیست؛ قبل از مسدودسازی در حالت شبیه‌سازی بررسی شود.', 'warning' => 'تا زمانی که کاربرد دامنه مشخص نشده، آن را وارد Blocklist نکنید.' ],
         ];
     }
@@ -177,7 +203,8 @@ class PolicyManager {
             'cdn'       => 'cdn|cloudflare|jsdelivr|unpkg|cdnjs',
             'map'       => 'map|neshan|balad|mapbox|نقشه',
             'analytics' => 'analytics|metric|stat|clarity|hotjar|tagmanager',
-            'license'   => 'license|licence|update|wordpress\.org|elementor',
+            'update'    => '(?:api\.)?wordpress\.org|downloads\.wordpress\.org|update-core',
+            'license'   => 'license|licence|elementor',
         ];
         foreach ( $patterns as $category => $pattern ) if ( preg_match( '/(?:' . $pattern . ')/i', $haystack ) ) return $category;
         return 'unknown';

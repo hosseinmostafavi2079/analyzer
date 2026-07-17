@@ -18,7 +18,7 @@ class AssetAnalyzer {
             'timeout'     => 15,
             'redirection' => 5,
             'sslverify'   => true,
-            'user-agent'  => 'Mostech-Resilience-Monitor/' . MEDIASANAT_PA_VERSION,
+            'user-agent'  => 'DepGuard/' . MEDIASANAT_PA_VERSION,
             'headers'     => [ 'Cache-Control' => 'no-cache' ],
         ] );
         $ttfb = max( 0.01, round( microtime( true ) - $start_time, 3 ) );
@@ -46,13 +46,14 @@ class AssetAnalyzer {
             ];
         }
 
-        return $this->analyze_html( $body, $ttfb, $code, 'server' );
+        return $this->analyze_html( $body, $ttfb, $code, 'server', $ttfb );
     }
 
     /**
      * تحلیل HTML دریافت‌شده از loopback سرور یا fallback مرورگر مدیر.
      */
-    public function analyze_html( $body, $response_time, $code = 200, $source = 'server' ) {
+    public function analyze_html( $body, $response_time, $code = 200, $source = 'server', $load_time = null ) {
+        $analysis_started = microtime( true );
         $html_size = strlen( $body );
 
         // مرحله ۲: استخراج فایل‌های استاتیک
@@ -73,15 +74,21 @@ class AssetAnalyzer {
             $checked++;
         }
 
-        $total_load_time = max( 0.01, round( (float) $response_time, 3 ) );
-        $ttfb = $total_load_time;
+        $response_time = max( 0.01, round( (float) $response_time, 3 ) );
+        $load_time = null === $load_time ? $response_time : max( $response_time, round( (float) $load_time, 3 ) );
         $total_size_mb   = round( ( $html_size + $total_assets_size ) / ( 1024 * 1024 ), 2 );
-        $score = $this->calculate_speed_score( $ttfb, $total_load_time, $total_size_mb, count( $assets ), count( $external_assets ) );
+        $analysis_time = max( 0.001, round( microtime( true ) - $analysis_started, 3 ) );
+        $total_analysis_time = round( $load_time + $analysis_time, 3 );
+        $score = $this->calculate_speed_score( $response_time, $load_time, $total_size_mb, count( $assets ), count( $external_assets ) );
 
         return [
             'status'        => 'success',
-            'ttfb'          => $ttfb,
-            'time'          => $total_load_time,
+            'ttfb'          => $response_time,
+            'server_response_time' => $response_time,
+            'load_time'     => $load_time,
+            'analysis_time' => $analysis_time,
+            'total_analysis_time' => $total_analysis_time,
+            'time'          => $total_analysis_time,
             'size'          => $total_size_mb,
             'html_size'     => round( $html_size / 1024, 1 ),
             'assets_count'  => count( $assets ),
@@ -90,6 +97,8 @@ class AssetAnalyzer {
             'external_assets' => $this->describe_external_assets( $external_assets, $this->extract_url_references( $body ) ),
             'code'          => $code,
             'score'         => $score,
+            'score_available' => true,
+            'data_quality'  => 'complete',
             'scan_source'   => $source,
             'scanned_at'    => time(),
         ];
@@ -297,7 +306,7 @@ class AssetAnalyzer {
         return max( 0, min( 100, $score ) );
     }
 
-    public function get_heavy_images( $limit = 100 ) {
+    public function get_heavy_images( $limit = 2000 ) {
         $uploads = wp_upload_dir();
         $locations = [
             [ 'path' => get_stylesheet_directory(), 'url' => get_stylesheet_directory_uri(), 'source' => 'قالب فعال' ],
@@ -322,12 +331,28 @@ class AssetAnalyzer {
                     $size = $file->getSize();
                     if ( $size <= 200 * 1024 ) continue;
                     $relative = ltrim( substr( $path, strlen( wp_normalize_path( $location['path'] ) ) ), '/' );
+                    $filename = $file->getFilename();
+                    $extension = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+                    $is_thumbnail = (bool) preg_match( '/-\d+x\d+(?=\.[^.]+$)/i', $filename );
+                    $group_name = preg_replace( '/-\d+x\d+(?=\.[^.]+$)/i', '', $filename );
+                    $dimensions = [ 0, 0 ];
+                    if ( 'svg' !== $extension ) {
+                        $detected = @getimagesize( $path );
+                        if ( is_array( $detected ) ) $dimensions = [ (int) $detected[0], (int) $detected[1] ];
+                    }
                     $heavy_images[] = [
-                        'title'  => $file->getFilename(),
-                        'url'    => trailingslashit( $location['url'] ) . str_replace( '%2F', '/', rawurlencode( $relative ) ),
-                        'size'   => size_format( $size, 2 ),
-                        'bytes'  => $size,
-                        'source' => $location['source'],
+                        'title'         => $filename,
+                        'url'           => trailingslashit( $location['url'] ) . str_replace( '%2F', '/', rawurlencode( $relative ) ),
+                        'size'          => size_format( $size, 2 ),
+                        'bytes'         => $size,
+                        'source'        => $location['source'],
+                        'relative_path' => $relative,
+                        'folder'        => trim( str_replace( '\\', '/', dirname( $relative ) ), './' ) ?: '/',
+                        'extension'     => $extension,
+                        'width'         => $dimensions[0],
+                        'height'        => $dimensions[1],
+                        'is_thumbnail'  => $is_thumbnail,
+                        'group_key'     => strtolower( $location['source'] . '/' . dirname( $relative ) . '/' . $group_name ),
                     ];
                 }
             } catch ( \UnexpectedValueException $exception ) {
@@ -335,6 +360,25 @@ class AssetAnalyzer {
             }
         }
         usort( $heavy_images, function($a, $b) { return $b['bytes'] <=> $a['bytes']; } );
-        return array_slice( $heavy_images, 0, $limit );
+        $groups = [];
+        foreach ( array_slice( $heavy_images, 0, $limit ) as $image ) {
+            $key = $image['group_key'];
+            if ( ! isset( $groups[ $key ] ) ) $groups[ $key ] = [ 'primary' => null, 'variants' => [] ];
+            if ( ! $image['is_thumbnail'] && null === $groups[ $key ]['primary'] ) $groups[ $key ]['primary'] = $image;
+            else $groups[ $key ]['variants'][] = $image;
+        }
+        $result = [];
+        foreach ( $groups as $group ) {
+            $primary = $group['primary'];
+            if ( null === $primary ) {
+                $primary = array_shift( $group['variants'] );
+                $primary['is_thumbnail'] = true;
+            }
+            $primary['variants'] = $group['variants'];
+            $primary['variant_count'] = count( $group['variants'] );
+            $result[] = $primary;
+        }
+        usort( $result, function( $a, $b ) { return $b['bytes'] <=> $a['bytes']; } );
+        return $result;
     }
 }
